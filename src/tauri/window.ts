@@ -10,3 +10,8 @@ export async function closeWindow() {
   if (!isTauriRuntime) return;
   await getCurrentWindow().close();
 }
+
+export async function startWindowDrag() {
+  if (!isTauriRuntime) return;
+  await getCurrentWindow().startDragging();
+}

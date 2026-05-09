@@ -5,7 +5,7 @@ import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
 import { useAudioMeters } from "../hooks/useAudioMeters";
 import { openRecordingFolder } from "../tauri/commands";
-import { closeWindow, minimizeWindow } from "../tauri/window";
+import { closeWindow, minimizeWindow, startWindowDrag } from "../tauri/window";
 import { useRecorderStore } from "../store/recorderStore";
 
 const bars = [
@@ -63,12 +63,23 @@ export function App() {
 
   return (
     <main className="widget-shell">
-      <header className="windows-titlebar" data-tauri-drag-region>
+      <header
+        className="windows-titlebar"
+        data-tauri-drag-region
+        onMouseDown={(event) => {
+          if (event.button === 0) void startWindowDrag();
+        }}
+      >
         <div className="window-brand" data-tauri-drag-region>
           <span className="window-icon" />
           <span data-tauri-drag-region>Meetings Assistant</span>
         </div>
-        <div className="window-actions">
+        <div
+          className="window-actions"
+          onMouseDown={(event) => {
+            event.stopPropagation();
+          }}
+        >
           <button type="button" onClick={() => void minimizeWindow()} aria-label="Minimizar" title="Minimizar">
             <Minus />
           </button>

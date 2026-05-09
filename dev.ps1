@@ -47,10 +47,15 @@ if ($CargoTargetDir) {
   $env:CARGO_TARGET_DIR = $defaultCargoTarget
 }
 
+if (-not $env:RUST_LOG) {
+  $env:RUST_LOG = "warn"
+}
+
 New-Item -ItemType Directory -Force -Path $env:CARGO_TARGET_DIR | Out-Null
 
 Write-Host ""
 Write-Host "Cargo target dir: $env:CARGO_TARGET_DIR" -ForegroundColor DarkGray
+Write-Host "Rust log level: $env:RUST_LOG" -ForegroundColor DarkGray
 Write-Host "If Windows Application Control still blocks Rust build scripts, use WSL or allow this folder in your security policy." -ForegroundColor DarkGray
 
 Write-Host ""
