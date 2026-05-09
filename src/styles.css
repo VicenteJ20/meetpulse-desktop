@@ -42,6 +42,10 @@ button {
   user-select: none;
 }
 
+.widget-shell.is-compact {
+  padding: 0;
+}
+
 .windows-titlebar {
   position: fixed;
   top: 0;
@@ -165,6 +169,8 @@ button {
 .recorder-header {
   display: flex;
   align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -174,6 +180,58 @@ button {
   font-size: 23px;
   font-weight: 800;
   line-height: 1;
+}
+
+.view-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  color: rgba(215, 241, 255, 0.72);
+  cursor: pointer;
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+}
+
+.view-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-track {
+  position: relative;
+  display: inline-flex;
+  width: 34px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(186, 230, 253, 0.28);
+  border-radius: 999px;
+  background: rgba(8, 20, 38, 0.62);
+}
+
+.switch-track::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(224, 242, 254, 0.78);
+  content: "";
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.view-switch input:checked + .switch-track::after {
+  transform: translateX(16px);
+  background: #7dd3fc;
+  box-shadow: 0 0 10px rgba(125, 211, 252, 0.62);
 }
 
 .recording-subtitle,
@@ -514,21 +572,101 @@ button {
 .compact-recorder {
   display: none;
   width: 100%;
-  height: 100vh;
+  height: 100%;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  border-radius: 12px;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 999px;
+  padding: 12px 16px;
   color: #e0f2fe;
-  background: linear-gradient(135deg, #071226, #0c4a6e 64%, #38bdf8);
+  background:
+    linear-gradient(135deg, rgba(6, 16, 32, 0.98), rgba(10, 54, 92, 0.97) 62%, rgba(11, 96, 138, 0.96)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 26px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  cursor: move;
+}
+
+.widget-shell.is-compact .compact-recorder {
+  display: flex;
+}
+
+.compact-status,
+.compact-controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
 }
 
 .compact-time {
   font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: clamp(20px, 12vw, 34px);
+  font-size: 24px;
   font-weight: 800;
   letter-spacing: 0;
   white-space: nowrap;
+}
+
+.signal-icon,
+.mini-button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.signal-icon {
+  color: rgba(224, 242, 254, 0.5);
+  background: rgba(8, 20, 38, 0.48);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.signal-icon svg,
+.mini-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.signal-icon.is-active.mic {
+  color: #7dd3fc;
+  box-shadow:
+    inset 0 0 0 1px rgba(125, 211, 252, 0.38),
+    0 0 16px rgba(125, 211, 252, 0.42);
+}
+
+.signal-icon.is-active.system {
+  color: #34d399;
+  box-shadow:
+    inset 0 0 0 1px rgba(52, 211, 153, 0.38),
+    0 0 16px rgba(52, 211, 153, 0.42);
+}
+
+.mini-button {
+  border: 1px solid rgba(224, 242, 254, 0.2);
+  color: #e0f2fe;
+  background: rgba(8, 20, 38, 0.5);
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+.mini-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(125, 211, 252, 0.16);
+}
+
+.mini-button.is-active {
+  color: #071226;
+  background: #e0f2fe;
+}
+
+.mini-button:disabled {
+  cursor: default;
+  opacity: 0.38;
 }
 
 @media (max-width: 260px), (max-height: 280px) {

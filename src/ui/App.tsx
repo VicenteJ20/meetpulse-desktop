@@ -4,7 +4,7 @@ import { ExternalLink, History, Maximize2, Mic, Minus, MonitorSpeaker, Pause, Pl
 import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
 import { openExternalUrl, openRecordingFolder } from "../tauri/commands";
-import { closeWindow, minimizeWindow, startWindowDrag } from "../tauri/window";
+import { applyWindowMode, closeWindow, minimizeWindow, startWindowDrag } from "../tauri/window";
 import { useRecorderStore } from "../store/recorderStore";
 
 const bars = [
@@ -17,6 +17,7 @@ export function App() {
   const { snapshot, recordings, loading, error, init, refresh, start, pause, resume, stop } = useRecorderStore();
   const [now, setNow] = useState(() => Date.now());
   const [showHistory, setShowHistory] = useState(false);
+  const [compactMode, setCompactMode] = useState(() => localStorage.getItem("recorder-view-mode") === "compact");
 
   useEffect(() => {
     void init();
@@ -26,6 +27,11 @@ export function App() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("recorder-view-mode", compactMode ? "compact" : "full");
+    void applyWindowMode(compactMode);
+  }, [compactMode]);
 
   const status = snapshot?.status ?? "idle";
   const durationMs = useLiveDuration(snapshot, now);
@@ -60,38 +66,71 @@ export function App() {
     void startWindowDrag();
   }
 
+  function toggleCompactMode(value: boolean) {
+    setShowHistory(false);
+    setCompactMode(value);
+  }
+
   return (
-    <main className="widget-shell">
-      <header
-        className="windows-titlebar"
-        data-tauri-drag-region
-        onPointerDown={handleTitlebarPointerDown}
-      >
-        <div className="window-brand" data-tauri-drag-region>
-          <span className="window-icon" />
-          <span data-tauri-drag-region>Meetings Assistant</span>
-        </div>
-        <div
-          className="window-actions"
-          onMouseDown={(event) => {
-            event.stopPropagation();
-          }}
+    <main className={clsx("widget-shell", compactMode && "is-compact")}>
+      {!compactMode && (
+        <header
+          className="windows-titlebar"
+          data-tauri-drag-region
+          onPointerDown={handleTitlebarPointerDown}
         >
-          <button type="button" onClick={() => void minimizeWindow()} aria-label="Minimizar" title="Minimizar">
-            <Minus />
-          </button>
-          <button type="button" className="is-disabled" aria-label="Maximizar deshabilitado" title="No expandible">
-            <Maximize2 />
-          </button>
-          <button type="button" className="close" onClick={() => void closeWindow()} aria-label="Cerrar" title="Cerrar">
-            <X />
-          </button>
-        </div>
-      </header>
-      <section className="compact-recorder" data-tauri-drag-region>
-        <div className={clsx("compact-dot", isRecording && "is-live", isPaused && "is-paused")} />
-        <span className="compact-time">{duration}</span>
-      </section>
+          <div className="window-brand" data-tauri-drag-region>
+            <span className="window-icon" />
+            <span data-tauri-drag-region>Meetings Assistant</span>
+          </div>
+          <div
+            className="window-actions"
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <button type="button" onClick={() => void minimizeWindow()} aria-label="Minimizar" title="Minimizar">
+              <Minus />
+            </button>
+            <button type="button" className="is-disabled" aria-label="Maximizar deshabilitado" title="No expandible">
+              <Maximize2 />
+            </button>
+            <button type="button" className="close" onClick={() => void closeWindow()} aria-label="Cerrar" title="Cerrar">
+              <X />
+            </button>
+          </div>
+        </header>
+      )}
+
+      {compactMode ? (
+        <section className="compact-recorder" data-tauri-drag-region onPointerDown={handleTitlebarPointerDown}>
+          <div className="compact-status" data-tauri-drag-region>
+            <SignalIcon icon={<Mic />} active={isRecording && micLevel > 0.01} color="mic" label="Microfono" />
+            <SignalIcon icon={<MonitorSpeaker />} active={isRecording && systemLevel > 0.01} color="system" label="Equipo" />
+          </div>
+          <span className="compact-time" data-tauri-drag-region>{duration}</span>
+          <div className="compact-controls">
+            <MiniButton
+              label={isPaused ? "Reanudar" : isRecording ? "Pausar" : "Grabar"}
+              icon={isRecording ? <Pause /> : <Play />}
+              disabled={isBusy}
+              active={isRecording}
+              onClick={handlePrimary}
+            />
+            <MiniButton
+              label="Finalizar"
+              icon={<Square />}
+              disabled={isBusy || !isActive}
+              onClick={() => void stop()}
+            />
+            <MiniButton
+              label="Vista completa"
+              icon={<Maximize2 />}
+              onClick={() => toggleCompactMode(false)}
+            />
+          </div>
+        </section>
+      ) : (
 
       <section className="recorder-card">
         <header className="recorder-header" data-tauri-drag-region>
@@ -99,6 +138,15 @@ export function App() {
             <p className="recording-title">{statusTitle(status)}</p>
             <p className="recording-subtitle">{statusSubtitle(status)}</p>
           </div>
+          <label className="view-switch" title="Vista minima">
+            <span>Vista minima</span>
+            <input
+              type="checkbox"
+              checked={compactMode}
+              onChange={(event) => toggleCompactMode(event.currentTarget.checked)}
+            />
+            <span className="switch-track" />
+          </label>
         </header>
 
         <div className="recording-file" title={currentRecordingName} data-tauri-drag-region>
@@ -215,7 +263,56 @@ export function App() {
 
         {(error || snapshot?.last_error) && <div className="widget-error">{error ?? snapshot?.last_error}</div>}
       </section>
+      )}
     </main>
+  );
+}
+
+function SignalIcon({
+  icon,
+  active,
+  color,
+  label,
+}: {
+  icon: ReactNode;
+  active: boolean;
+  color: "mic" | "system";
+  label: string;
+}) {
+  return (
+    <span className={clsx("signal-icon", color, active && "is-active")} title={label} aria-label={label}>
+      {icon}
+    </span>
+  );
+}
+
+function MiniButton({
+  label,
+  icon,
+  disabled,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon: ReactNode;
+  disabled?: boolean;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={clsx("mini-button", active && "is-active")}
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      title={label}
+      aria-label={label}
+    >
+      {icon}
+    </button>
   );
 }
 
