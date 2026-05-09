@@ -22,7 +22,7 @@ Esta base implementa el control plane completo del MVP:
 - `manifest.json` por grabacion
 - segmentos resilientes con escritura temporal y rename atomico
 - recovery de sesiones interrumpidas
-- finalizacion local valida con originales Ogg Opus en `final/mic.opus` y `final/system.opus`
+- finalizacion local valida con mezcla Ogg Opus en `final/mixed.opus`
 
 El flujo real vive en Rust: `native-audio` captura microfono y audio del escritorio con WASAPI, codifica Opus y deja Tauri/React solo como UI.
 
@@ -137,13 +137,11 @@ recordings/
     mic/
     system/
     final/
+      mixed.opus
 ```
 
 ## Roadmap tecnico inmediato
 
-1. Implementar `MicCaptureWorker` con CPAL.
-2. Implementar `SystemAudioCaptureWorker` con WASAPI loopback.
-3. Reemplazar payload mock por Ogg Opus real.
-4. Agregar resampling a 48 kHz con `rubato`.
-5. Reemplazar mezcla placeholder por decode/mix/encode con headroom.
-6. Agregar pruebas de recovery y segment writer.
+1. Agregar resampling defensivo si algun dispositivo no acepta 48 kHz.
+2. Agregar pruebas de recovery, segment writer y mezcla final.
+3. Persistir metricas de salud de dispositivo en `device_history`.

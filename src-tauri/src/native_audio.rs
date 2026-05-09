@@ -12,6 +12,13 @@ use std::{
 use anyhow::bail;
 
 #[cfg(feature = "native-audio")]
+use std::collections::BTreeMap;
+
+use crate::manifest::Manifest;
+#[cfg(feature = "native-audio")]
+use crate::manifest::SegmentManifest;
+
+#[cfg(feature = "native-audio")]
 const SAMPLE_RATE: u32 = 48_000;
 #[cfg(feature = "native-audio")]
 const OPUS_FRAME_SAMPLES: usize = 960;
@@ -151,13 +158,25 @@ pub fn f32_from_bits(value: u32) -> f32 {
     f32::from_bits(value).clamp(0.0, 1.0)
 }
 
+pub fn build_mixed_opus(_recording_dir: &Path, manifest: &Manifest, output: &Path) -> anyhow::Result<bool> {
+    #[cfg(feature = "native-audio")]
+    {
+        build_native_mixed_opus(_recording_dir, manifest, output)
+    }
+
+    #[cfg(not(feature = "native-audio"))]
+    {
+        build_mock_mixed_opus(manifest, output)
+    }
+}
+
 #[cfg(feature = "native-audio")]
 fn wasapi_result<T>(result: Result<T, Box<dyn std::error::Error>>) -> anyhow::Result<T> {
     result.map_err(|error| anyhow::anyhow!("{error}"))
 }
 
 #[cfg(feature = "native-audio")]
-struct OpusOggWriter {
+pub(crate) struct OpusOggWriter {
     file: fs::File,
     encoder: opus::Encoder,
     serial: u32,
@@ -168,7 +187,7 @@ struct OpusOggWriter {
 
 #[cfg(feature = "native-audio")]
 impl OpusOggWriter {
-    fn create(path: &Path, channels: u16) -> anyhow::Result<Self> {
+    pub(crate) fn create(path: &Path, channels: u16) -> anyhow::Result<Self> {
         let file = fs::File::create(path)?;
         let opus_channels = if channels == 1 {
             opus::Channels::Mono
@@ -210,14 +229,14 @@ impl OpusOggWriter {
         Ok(())
     }
 
-    fn write_frame(&mut self, pcm: &[f32]) -> anyhow::Result<()> {
+    pub(crate) fn write_frame(&mut self, pcm: &[f32]) -> anyhow::Result<()> {
         let mut packet = [0_u8; 1500];
         let len = self.encoder.encode_float(pcm, &mut packet)?;
         self.granule_position += OPUS_FRAME_SAMPLES as u64;
         self.write_page(&[packet[..len].to_vec()], 0x00, self.granule_position)
     }
 
-    fn finish(mut self) -> anyhow::Result<()> {
+    pub(crate) fn finish(mut self) -> anyhow::Result<()> {
         self.write_page(&[Vec::new()], 0x04, self.granule_position)?;
         self.file.sync_all()?;
         Ok(())
@@ -260,6 +279,160 @@ impl OpusOggWriter {
 }
 
 #[cfg(feature = "native-audio")]
+fn build_native_mixed_opus(recording_dir: &Path, manifest: &Manifest, output: &Path) -> anyhow::Result<bool> {
+    let mic_segments = segments_by_index(manifest, "mic");
+    let system_segments = segments_by_index(manifest, "system");
+    if mic_segments.is_empty() && system_segments.is_empty() {
+        return Ok(false);
+    }
+
+    let mut writer = OpusOggWriter::create(output, 2)?;
+    let first = mic_segments
+        .keys()
+        .chain(system_segments.keys())
+        .min()
+        .copied()
+        .unwrap_or(1);
+    let last = mic_segments
+        .keys()
+        .chain(system_segments.keys())
+        .max()
+        .copied()
+        .unwrap_or(first);
+
+    for index in first..=last {
+        let mic_pcm = match mic_segments.get(&index) {
+            Some(segment) => decode_segment(recording_dir, segment, 1)?,
+            None => Vec::new(),
+        };
+        let system_pcm = match system_segments.get(&index) {
+            Some(segment) => decode_segment(recording_dir, segment, 2)?,
+            None => Vec::new(),
+        };
+        let mixed = mix_to_stereo(&mic_pcm, &system_pcm);
+        write_stereo_frames(&mut writer, &mixed)?;
+    }
+
+    writer.finish()?;
+    Ok(true)
+}
+
+#[cfg(feature = "native-audio")]
+fn segments_by_index<'a>(manifest: &'a Manifest, track: &str) -> BTreeMap<u32, &'a SegmentManifest> {
+    manifest
+        .segments
+        .iter()
+        .filter(|segment| segment.track == track)
+        .map(|segment| (segment.index, segment))
+        .collect()
+}
+
+#[cfg(feature = "native-audio")]
+fn decode_segment(recording_dir: &Path, segment: &SegmentManifest, channels: u16) -> anyhow::Result<Vec<f32>> {
+    let packets = read_ogg_packets(&recording_dir.join(&segment.path))?;
+    let opus_channels = if channels == 1 {
+        opus::Channels::Mono
+    } else {
+        opus::Channels::Stereo
+    };
+    let mut decoder = opus::Decoder::new(SAMPLE_RATE, opus_channels)?;
+    let mut pcm = Vec::new();
+    let mut buffer = vec![0.0_f32; 5760 * channels as usize];
+
+    for packet in packets {
+        if packet.is_empty() || packet.starts_with(b"OpusHead") || packet.starts_with(b"OpusTags") {
+            continue;
+        }
+        let frames = decoder.decode_float(&packet, &mut buffer, false)?;
+        pcm.extend_from_slice(&buffer[..frames * channels as usize]);
+    }
+
+    Ok(pcm)
+}
+
+#[cfg(feature = "native-audio")]
+fn read_ogg_packets(path: &Path) -> anyhow::Result<Vec<Vec<u8>>> {
+    let bytes = fs::read(path)?;
+    let mut packets = Vec::new();
+    let mut current = Vec::new();
+    let mut offset = 0_usize;
+
+    while offset + 27 <= bytes.len() {
+        if &bytes[offset..offset + 4] != b"OggS" {
+            bail!("pagina Ogg invalida en {}", path.display());
+        }
+
+        let segments = bytes[offset + 26] as usize;
+        let lacing_start = offset + 27;
+        let body_start = lacing_start + segments;
+        if body_start > bytes.len() {
+            bail!("pagina Ogg truncada en {}", path.display());
+        }
+
+        let body_len = bytes[lacing_start..body_start]
+            .iter()
+            .map(|value| *value as usize)
+            .sum::<usize>();
+        let body_end = body_start + body_len;
+        if body_end > bytes.len() {
+            bail!("cuerpo Ogg truncado en {}", path.display());
+        }
+
+        let mut body_offset = body_start;
+        for lace in &bytes[lacing_start..body_start] {
+            let lace_len = *lace as usize;
+            current.extend_from_slice(&bytes[body_offset..body_offset + lace_len]);
+            body_offset += lace_len;
+            if lace_len < 255 {
+                packets.push(std::mem::take(&mut current));
+            }
+        }
+
+        offset = body_end;
+    }
+
+    Ok(packets)
+}
+
+#[cfg(feature = "native-audio")]
+fn mix_to_stereo(mic_pcm: &[f32], system_pcm: &[f32]) -> Vec<f32> {
+    let mic_frames = mic_pcm.len();
+    let system_frames = system_pcm.len() / 2;
+    let frames = mic_frames.max(system_frames);
+    let mut mixed = Vec::with_capacity(frames * 2);
+
+    for frame in 0..frames {
+        let mic = mic_pcm.get(frame).copied().unwrap_or_default() * 0.85;
+        let left = system_pcm.get(frame * 2).copied().unwrap_or_default() * 0.72;
+        let right = system_pcm.get(frame * 2 + 1).copied().unwrap_or_default() * 0.72;
+        mixed.push((left + mic).clamp(-1.0, 1.0));
+        mixed.push((right + mic).clamp(-1.0, 1.0));
+    }
+
+    mixed
+}
+
+#[cfg(feature = "native-audio")]
+fn write_stereo_frames(writer: &mut OpusOggWriter, samples: &[f32]) -> anyhow::Result<()> {
+    let frame_len = OPUS_FRAME_SAMPLES * 2;
+    let mut offset = 0_usize;
+
+    while offset < samples.len() {
+        let end = (offset + frame_len).min(samples.len());
+        if end - offset == frame_len {
+            writer.write_frame(&samples[offset..end])?;
+        } else {
+            let mut padded = vec![0.0_f32; frame_len];
+            padded[..end - offset].copy_from_slice(&samples[offset..end]);
+            writer.write_frame(&padded)?;
+        }
+        offset = end;
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "native-audio")]
 fn ogg_crc(bytes: &[u8]) -> u32 {
     let mut crc = 0_u32;
     for byte in bytes {
@@ -288,4 +461,16 @@ fn write_mock_opus(track: &str, path: &Path, duration: Duration, rms_meter: Arc<
     file.sync_all()?;
     rms_meter.store(f32_to_bits(if track == "mic" { 0.22 } else { 0.16 }), Ordering::Relaxed);
     Ok(())
+}
+
+#[cfg(not(feature = "native-audio"))]
+fn build_mock_mixed_opus(manifest: &Manifest, output: &Path) -> anyhow::Result<bool> {
+    if manifest.segments.is_empty() {
+        return Ok(false);
+    }
+    let mut file = fs::File::create(output)?;
+    file.write_all(b"meetings-recorder mock mixed opus placeholder\n")?;
+    file.write_all(manifest.recording_id.as_bytes())?;
+    file.sync_all()?;
+    Ok(true)
 }

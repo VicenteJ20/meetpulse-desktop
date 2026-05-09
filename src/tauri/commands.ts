@@ -147,7 +147,7 @@ export function stopRecording(): Promise<RecorderSnapshot> {
       completed_at: new Date().toISOString(),
       duration_ms: mockSnapshot.duration_ms,
       folder_path: "web-mock",
-      final_audio_path: "web-mock/final",
+      final_audio_path: "web-mock/final/mixed.opus",
       segments: Math.max(1, Math.floor(mockSnapshot.duration_ms / 10_000) * 2),
       size_bytes: Math.max(4096, Math.floor(mockSnapshot.duration_ms / 1000) * 14000),
     };

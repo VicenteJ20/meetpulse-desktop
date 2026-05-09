@@ -27,7 +27,7 @@
 - [ ] Detener cambia a `stopping`.
 - [ ] El ultimo segmento se confirma.
 - [ ] El manifest queda como `completed`.
-- [ ] Se generan archivos en `final/`.
+- [ ] Se genera solo `final/mixed.opus`.
 - [ ] La UI lista la grabacion.
 
 ## Audio nativo

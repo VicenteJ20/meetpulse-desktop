@@ -20,7 +20,7 @@ flowchart TD
   Writer --> Manifest["manifest.json"]
   Writer --> DB["SQLite"]
   Manager --> Finalizer["Final audio builder"]
-  Finalizer --> Final["final/*.opus originals"]
+  Finalizer --> Final["final/mixed.opus"]
 ```
 
 ## Estados visibles
@@ -51,7 +51,7 @@ recorder://recordings-changed
 - `manifest.rs`: manifest atomico.
 - `paths.rs`: AppData y estructura local.
 - `recovery.rs`: limpieza de `.tmp`, locks antiguos y sesiones interrumpidas.
-- `finalizer.rs`: artefactos finales.
+- `finalizer.rs`: limpia `final/` y construye `mixed.opus`.
 - `audio.rs`: dispositivos y futura captura nativa.
 
 ## Nota sobre captura

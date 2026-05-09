@@ -31,7 +31,7 @@
 
 ## Fase 4: mezcla final
 
-- Decodificar `final/mic.opus` y `final/system.opus`.
+- Decodificar segmentos `mic/*.opus` y `system/*.opus`.
 - Alinear por timestamps de segmento.
 - Aplicar headroom para evitar clipping.
 - Codificar `final/mixed.opus`.
