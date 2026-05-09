@@ -109,6 +109,7 @@ pub struct RecorderManager {
     storage: Arc<Storage>,
     audio_devices: Arc<StdMutex<AudioDeviceSelection>>,
     active: Option<Arc<StdMutex<ActiveRecording>>>,
+    last_completed: Option<RecorderSnapshot>,
     stop_flag: Arc<AtomicBool>,
     workers: Vec<JoinHandle<()>>,
 }
@@ -126,6 +127,7 @@ impl RecorderManager {
             storage,
             audio_devices,
             active: None,
+            last_completed: None,
             stop_flag: Arc::new(AtomicBool::new(false)),
             workers: Vec::new(),
         }
@@ -134,6 +136,10 @@ impl RecorderManager {
     pub fn snapshot(&self) -> RecorderSnapshot {
         if let Some(active) = &self.active {
             return active.lock().expect("active recorder mutex poisoned").snapshot();
+        }
+
+        if let Some(snapshot) = &self.last_completed {
+            return snapshot.clone();
         }
 
         RecorderSnapshot {
@@ -154,6 +160,7 @@ impl RecorderManager {
             bail!("ya hay una grabacion activa");
         }
 
+        self.last_completed = None;
         self.stop_flag.store(false, Ordering::SeqCst);
 
         let id = create_recording_id();
@@ -253,6 +260,7 @@ impl RecorderManager {
         let snapshot = session.snapshot();
         drop(session);
         self.active = None;
+        self.last_completed = Some(snapshot.clone());
         self.emit_snapshot(&snapshot);
         let _ = self.app.emit("recorder://recordings-changed", ());
         Ok(snapshot)
