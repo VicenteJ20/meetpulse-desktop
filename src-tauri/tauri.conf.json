@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Meetings Assistant",
+  "version": "0.1.0",
+  "identifier": "com.meetingsassistant.recorder",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Meetings Assistant",
+        "width": 356,
+        "height": 556,
+        "minWidth": 180,
+        "minHeight": 96,
+        "maxWidth": 356,
+        "maxHeight": 556,
+        "resizable": false,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "icon": ["icons/icon.ico"]
+  },
+  "plugins": {}
+}
