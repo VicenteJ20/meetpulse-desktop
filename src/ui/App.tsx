@@ -124,6 +124,11 @@ export function App() {
               onClick={() => void stop()}
             />
             <MiniButton
+              label="Minimizar"
+              icon={<Minus />}
+              onClick={() => void minimizeWindow()}
+            />
+            <MiniButton
               label="Vista completa"
               icon={<Maximize2 />}
               onClick={() => toggleCompactMode(false)}
@@ -150,7 +155,8 @@ export function App() {
         </header>
 
         <div className="recording-file" title={currentRecordingName} data-tauri-drag-region>
-          {currentRecordingName}
+          <span>Archivo</span>
+          <strong>{currentRecordingName}</strong>
         </div>
 
         <div className="duration-row" data-tauri-drag-region>

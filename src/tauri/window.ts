@@ -3,7 +3,7 @@ import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauriRuntime } from "./commands";
 
 const FULL_WINDOW = { width: 356, height: 556 };
-const COMPACT_WINDOW = { width: 520, height: 82 };
+const COMPACT_WINDOW = { width: 430, height: 56 };
 
 export async function minimizeWindow() {
   if (!isTauriRuntime) return;
@@ -37,6 +37,6 @@ export async function applyWindowMode(compact: boolean) {
   const monitorY = monitor.position.y / scale;
   const monitorWidth = monitor.size.width / scale;
   const x = Math.round(monitorX + (monitorWidth - size.width) / 2);
-  const y = Math.round(monitorY + 18);
+  const y = Math.round(monitorY + 14);
   await appWindow.setPosition(new LogicalPosition(x, y));
 }
