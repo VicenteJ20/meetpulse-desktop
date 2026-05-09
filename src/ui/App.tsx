@@ -61,8 +61,8 @@ export function App() {
   const systemLevel = snapshot?.system.status === "recording" ? (snapshot?.system.rms ?? 0) : 0;
   const visibleMicBars = createMeterBars(micLevel);
   const visibleSystemBars = createMeterBars(systemLevel);
-  const currentRecordingName = snapshot?.recording_id ? snapshot.recording_id.replace("rec_", "") : "sin archivo";
   const suggestedFileName = snapshot?.started_at ? defaultRecordingFileName(new Date(snapshot.started_at)) : defaultRecordingFileName(new Date());
+  const visibleRecordingName = snapshot?.recording_id ? suggestedFileName : "sin archivo";
   const isCompleted = status === "completed" && Boolean(snapshot?.recording_id);
 
   function handlePrimary() {
@@ -81,7 +81,7 @@ export function App() {
 
   function handleTitlebarPointerDown(event: PointerEvent<HTMLElement>) {
     if (event.button !== 0) return;
-    if (event.target instanceof HTMLElement && event.target.closest("button")) return;
+    if (event.target instanceof Element && event.target.closest("button")) return;
     void startWindowDrag();
   }
 
@@ -111,6 +111,11 @@ export function App() {
       setSaving(false);
     }
   }
+
+  useEffect(() => {
+    if (!isCompleted || !snapshot?.recording_id || savedPath || saveError || saving) return;
+    void handleSave(true);
+  }, [isCompleted, snapshot?.recording_id, savedPath, saveError, saving]);
 
   return (
     <main className={clsx("widget-shell", compactMode && "is-compact")}>
@@ -144,12 +149,12 @@ export function App() {
       )}
 
       {compactMode ? (
-        <section className="compact-recorder" data-tauri-drag-region onPointerDown={handleTitlebarPointerDown}>
-          <div className="compact-status" data-tauri-drag-region>
+        <section className="compact-recorder" onPointerDown={handleTitlebarPointerDown}>
+          <div className="compact-status">
             <SignalIcon icon={<Mic />} active={isRecording && micLevel > 0.01} color="mic" label="Microfono" />
             <SignalIcon icon={<MonitorSpeaker />} active={isRecording && systemLevel > 0.01} color="system" label="Equipo" />
           </div>
-          <span className="compact-time" data-tauri-drag-region>{duration}</span>
+          <span className="compact-time">{duration}</span>
           <div className="compact-controls">
             <MiniButton
               label={isPaused ? "Reanudar" : isRecording ? "Pausar" : "Grabar"}
@@ -195,9 +200,9 @@ export function App() {
           </label>
         </header>
 
-        <div className="recording-file" title={currentRecordingName} data-tauri-drag-region>
+        <div className="recording-file" title={visibleRecordingName} data-tauri-drag-region>
           <span>Archivo</span>
-          <strong>{currentRecordingName}</strong>
+          <strong>{visibleRecordingName}</strong>
         </div>
 
         <div className="duration-row" data-tauri-drag-region>
@@ -252,7 +257,7 @@ export function App() {
         {isCompleted && (
           <section className="save-panel">
             <div className="save-panel-head">
-              <span>Audio listo</span>
+              <span>{savedPath ? "Guardado en borradores" : "Audio listo"}</span>
               <button type="button" onClick={() => void handleSave(true)} disabled={saving}>
                 Borradores
               </button>
@@ -332,7 +337,7 @@ export function App() {
                     className="history-item"
                     onClick={() => void openRecordingFolder(recording.id)}
                   >
-                    <span className="history-name">{recording.id.replace("rec_", "")}</span>
+                    <span className="history-name">{displayRecordingName(recording)}</span>
                     <span className="history-meta">
                       {formatDuration(recording.duration_ms)} · {recording.status}
                     </span>
@@ -386,6 +391,9 @@ function MiniButton({
       type="button"
       className={clsx("mini-button", active && "is-active")}
       disabled={disabled}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
       onClick={(event) => {
         event.stopPropagation();
         onClick();
@@ -449,6 +457,18 @@ function createMeterBars(level: number): number[] {
     const movement = 0.82 + Math.sin(Date.now() / 260 + index * 0.72) * 0.12;
     return Math.min(1, Math.max(0.08, bar * energy * movement));
   });
+}
+
+function displayRecordingName(recording: { final_audio_path?: string | null; started_at: string; id: string }): string {
+  const fileName = recording.final_audio_path?.split(/[\\/]/).pop()?.replace(/\.opus$/i, "");
+  if (fileName) return fileName;
+
+  const startedAt = new Date(recording.started_at);
+  if (!Number.isNaN(startedAt.getTime())) {
+    return defaultRecordingFileName(startedAt);
+  }
+
+  return recording.id.replace("rec_", "");
 }
 
 function ControlButton({
