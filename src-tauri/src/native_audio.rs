@@ -241,7 +241,7 @@ impl OpusOggWriter {
     }
 
     pub(crate) fn finish(mut self) -> anyhow::Result<()> {
-        self.write_page(&[Vec::new()], 0x04, self.granule_position)?;
+        self.write_page(&[], 0x04, self.granule_position)?;
         self.file.sync_all()?;
         Ok(())
     }
