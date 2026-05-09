@@ -26,6 +26,12 @@ const OPUS_FRAME_SAMPLES: usize = 960;
 const FINAL_MIX_MIC_GAIN: f32 = 2.1;
 #[cfg(feature = "native-audio")]
 const FINAL_MIX_SYSTEM_GAIN: f32 = 0.55;
+#[cfg(feature = "native-audio")]
+const MIC_SEGMENT_BITRATE: i32 = 32_000;
+#[cfg(feature = "native-audio")]
+const SYSTEM_SEGMENT_BITRATE: i32 = 64_000;
+#[cfg(feature = "native-audio")]
+const FINAL_TRANSCRIPTION_BITRATE: i32 = 32_000;
 
 pub fn record_segment_to_opus(
     track: &str,
@@ -97,7 +103,12 @@ fn record_wasapi_segment(
     let event = wasapi_result(audio_client.set_get_eventhandle())?;
     let capture_client = wasapi_result(audio_client.get_audiocaptureclient())?;
     let mut queue = VecDeque::with_capacity(blockalign * SAMPLE_RATE as usize * channels as usize);
-    let mut encoder = OpusOggWriter::create(path, channels)?;
+    let bitrate = if loopback {
+        SYSTEM_SEGMENT_BITRATE
+    } else {
+        MIC_SEGMENT_BITRATE
+    };
+    let mut encoder = OpusOggWriter::create(path, channels, bitrate)?;
     let mut pending = Vec::<f32>::with_capacity(OPUS_FRAME_SAMPLES * channels as usize * 2);
     let started = Instant::now();
 
@@ -191,7 +202,7 @@ pub(crate) struct OpusOggWriter {
 
 #[cfg(feature = "native-audio")]
 impl OpusOggWriter {
-    pub(crate) fn create(path: &Path, channels: u16) -> anyhow::Result<Self> {
+    pub(crate) fn create(path: &Path, channels: u16, bitrate: i32) -> anyhow::Result<Self> {
         let file = fs::File::create(path)?;
         let opus_channels = if channels == 1 {
             opus::Channels::Mono
@@ -206,7 +217,7 @@ impl OpusOggWriter {
             granule_position: 0,
             channels,
         };
-        writer.encoder.set_bitrate(opus::Bitrate::Bits(if channels == 1 { 48_000 } else { 96_000 }))?;
+        writer.encoder.set_bitrate(opus::Bitrate::Bits(bitrate))?;
         writer.write_headers()?;
         Ok(writer)
     }
@@ -290,7 +301,7 @@ fn build_native_mixed_opus(recording_dir: &Path, manifest: &Manifest, output: &P
         return Ok(false);
     }
 
-    let mut writer = OpusOggWriter::create(output, 2)?;
+    let mut writer = OpusOggWriter::create(output, 1, FINAL_TRANSCRIPTION_BITRATE)?;
     let first = mic_segments
         .keys()
         .chain(system_segments.keys())
@@ -313,8 +324,8 @@ fn build_native_mixed_opus(recording_dir: &Path, manifest: &Manifest, output: &P
             Some(segment) => decode_segment(recording_dir, segment, 2)?,
             None => Vec::new(),
         };
-        let mixed = mix_to_stereo(&mic_pcm, &system_pcm);
-        write_stereo_frames(&mut writer, &mixed)?;
+        let mixed = mix_to_mono_for_transcription(&mic_pcm, &system_pcm);
+        write_mono_frames(&mut writer, &mixed)?;
     }
 
     writer.finish()?;
@@ -399,18 +410,17 @@ fn read_ogg_packets(path: &Path) -> anyhow::Result<Vec<Vec<u8>>> {
 }
 
 #[cfg(feature = "native-audio")]
-fn mix_to_stereo(mic_pcm: &[f32], system_pcm: &[f32]) -> Vec<f32> {
+fn mix_to_mono_for_transcription(mic_pcm: &[f32], system_pcm: &[f32]) -> Vec<f32> {
     let mic_frames = mic_pcm.len();
     let system_frames = system_pcm.len() / 2;
     let frames = mic_frames.max(system_frames);
-    let mut mixed = Vec::with_capacity(frames * 2);
+    let mut mixed = Vec::with_capacity(frames);
 
     for frame in 0..frames {
         let mic = mic_pcm.get(frame).copied().unwrap_or_default() * FINAL_MIX_MIC_GAIN;
         let left = system_pcm.get(frame * 2).copied().unwrap_or_default() * FINAL_MIX_SYSTEM_GAIN;
         let right = system_pcm.get(frame * 2 + 1).copied().unwrap_or_default() * FINAL_MIX_SYSTEM_GAIN;
-        mixed.push(soft_limit(left + mic));
-        mixed.push(soft_limit(right + mic));
+        mixed.push(soft_limit(((left + right) * 0.5) + mic));
     }
 
     mixed
@@ -426,8 +436,8 @@ fn soft_limit(sample: f32) -> f32 {
 }
 
 #[cfg(feature = "native-audio")]
-fn write_stereo_frames(writer: &mut OpusOggWriter, samples: &[f32]) -> anyhow::Result<()> {
-    let frame_len = OPUS_FRAME_SAMPLES * 2;
+fn write_mono_frames(writer: &mut OpusOggWriter, samples: &[f32]) -> anyhow::Result<()> {
+    let frame_len = OPUS_FRAME_SAMPLES;
     let mut offset = 0_usize;
 
     while offset < samples.len() {
