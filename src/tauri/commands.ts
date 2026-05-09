@@ -50,6 +50,10 @@ export type AudioDevice = {
   is_default: boolean;
 };
 
+export type SavedAudio = {
+  path: string;
+};
+
 let mockSnapshot: RecorderSnapshot = {
   status: "idle",
   recording_id: null,
@@ -186,6 +190,32 @@ export function openExternalUrl(url: string): Promise<void> {
   return invoke("open_external_url", { url });
 }
 
+export function saveRecordingToLibrary({
+  recordingId,
+  client,
+  project,
+  fileName,
+  draft,
+}: {
+  recordingId: string;
+  client?: string;
+  project?: string;
+  fileName?: string;
+  draft: boolean;
+}): Promise<SavedAudio> {
+  if (!isTauriRuntime) {
+    const normalizedName = fileName?.trim() || defaultRecordingFileName(new Date());
+    const path = draft
+      ? `Music/Meetings Assistant/drafts/${normalizedName}.opus`
+      : `Music/Meetings Assistant/${client || "Cliente"}/${project || "Proyecto"}/${normalizedName}.opus`;
+    mockRecordings = mockRecordings.map((recording) =>
+      recording.id === recordingId ? { ...recording, final_audio_path: path } : recording,
+    );
+    return Promise.resolve({ path });
+  }
+  return invoke("save_recording_to_library", { recordingId, client, project, fileName, draft });
+}
+
 export function getAudioDevices(): Promise<AudioDevice[]> {
   if (!isTauriRuntime) {
     return Promise.resolve([
@@ -194,6 +224,15 @@ export function getAudioDevices(): Promise<AudioDevice[]> {
     ]);
   }
   return invoke("get_audio_devices");
+}
+
+export function defaultRecordingFileName(date: Date): string {
+  const day = date.getDate().toString().padStart(2, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const year = date.getFullYear();
+  const hour = date.getHours().toString().padStart(2, "0");
+  const minute = date.getMinutes().toString().padStart(2, "0");
+  return `grabacion_${day}_${month}_${year}_${hour}_${minute}`;
 }
 
 function updateMockDuration(): RecorderSnapshot {

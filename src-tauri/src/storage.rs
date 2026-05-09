@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Mutex};
 
 use anyhow::Context;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
 use crate::{manifest::SegmentManifest, paths::AppPaths};
@@ -126,6 +126,19 @@ impl Storage {
         Ok(())
     }
 
+    pub fn update_final_audio_path(&self, id: &str, final_audio_path: &str) -> anyhow::Result<()> {
+        let connection = self.connection.lock().expect("SQLite mutex poisoned");
+        connection.execute(
+            r#"
+            UPDATE recordings
+            SET final_audio_path = ?2
+            WHERE id = ?1
+            "#,
+            params![id, final_audio_path],
+        )?;
+        Ok(())
+    }
+
     pub fn insert_segment(&self, recording_id: &str, segment: &SegmentManifest) -> anyhow::Result<()> {
         let connection = self.connection.lock().expect("SQLite mutex poisoned");
         connection.execute(
@@ -195,5 +208,23 @@ impl Storage {
 
     pub fn recording_folder(&self, recording_id: &str) -> PathBuf {
         self.paths.recording_dir(recording_id)
+    }
+
+    pub fn recording_open_folder(&self, recording_id: &str) -> anyhow::Result<PathBuf> {
+        let connection = self.connection.lock().expect("SQLite mutex poisoned");
+        let final_audio_path = connection
+            .query_row(
+                "SELECT final_audio_path FROM recordings WHERE id = ?1",
+                params![recording_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
+
+        if let Some(path) = final_audio_path.and_then(|path| PathBuf::from(path).parent().map(PathBuf::from)) {
+            return Ok(path);
+        }
+
+        Ok(self.recording_folder(recording_id))
     }
 }

@@ -3,7 +3,12 @@ import type { CSSProperties, PointerEvent, ReactNode } from "react";
 import { ExternalLink, History, Maximize2, Mic, Minus, MonitorSpeaker, Pause, Play, Square, X } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
-import { openExternalUrl, openRecordingFolder } from "../tauri/commands";
+import {
+  defaultRecordingFileName,
+  openExternalUrl,
+  openRecordingFolder,
+  saveRecordingToLibrary,
+} from "../tauri/commands";
 import { applyWindowMode, closeWindow, minimizeWindow, startWindowDrag } from "../tauri/window";
 import { useRecorderStore } from "../store/recorderStore";
 
@@ -18,6 +23,12 @@ export function App() {
   const [now, setNow] = useState(() => Date.now());
   const [showHistory, setShowHistory] = useState(false);
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem("recorder-view-mode") === "compact");
+  const [saveClient, setSaveClient] = useState("");
+  const [saveProject, setSaveProject] = useState("");
+  const [saveFileName, setSaveFileName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
 
   useEffect(() => {
     void init();
@@ -33,6 +44,12 @@ export function App() {
     void applyWindowMode(compactMode);
   }, [compactMode]);
 
+  useEffect(() => {
+    setSaveError(null);
+    setSavedPath(null);
+    setSaveFileName("");
+  }, [snapshot?.recording_id]);
+
   const status = snapshot?.status ?? "idle";
   const durationMs = useLiveDuration(snapshot, now);
   const duration = formatWidgetDuration(durationMs);
@@ -45,6 +62,8 @@ export function App() {
   const visibleMicBars = createMeterBars(micLevel);
   const visibleSystemBars = createMeterBars(systemLevel);
   const currentRecordingName = snapshot?.recording_id ? snapshot.recording_id.replace("rec_", "") : "sin archivo";
+  const suggestedFileName = snapshot?.started_at ? defaultRecordingFileName(new Date(snapshot.started_at)) : defaultRecordingFileName(new Date());
+  const isCompleted = status === "completed" && Boolean(snapshot?.recording_id);
 
   function handlePrimary() {
     if (isPaused) {
@@ -69,6 +88,28 @@ export function App() {
   function toggleCompactMode(value: boolean) {
     setShowHistory(false);
     setCompactMode(value);
+  }
+
+  async function handleSave(draft: boolean) {
+    if (!snapshot?.recording_id) return;
+    setSaving(true);
+    setSaveError(null);
+
+    try {
+      const saved = await saveRecordingToLibrary({
+        recordingId: snapshot.recording_id,
+        client: saveClient,
+        project: saveProject,
+        fileName: saveFileName,
+        draft,
+      });
+      setSavedPath(saved.path);
+      void refresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -207,6 +248,41 @@ export function App() {
             color="system"
           />
         </div>
+
+        {isCompleted && (
+          <section className="save-panel">
+            <div className="save-panel-head">
+              <span>Audio listo</span>
+              <button type="button" onClick={() => void handleSave(true)} disabled={saving}>
+                Borradores
+              </button>
+            </div>
+            <div className="save-fields">
+              <input
+                value={saveClient}
+                onChange={(event) => setSaveClient(event.currentTarget.value)}
+                placeholder="Cliente"
+                disabled={saving}
+              />
+              <input
+                value={saveProject}
+                onChange={(event) => setSaveProject(event.currentTarget.value)}
+                placeholder="Proyecto"
+                disabled={saving}
+              />
+              <input
+                value={saveFileName}
+                onChange={(event) => setSaveFileName(event.currentTarget.value)}
+                placeholder={suggestedFileName}
+                disabled={saving}
+              />
+            </div>
+            <button className="save-primary" type="button" onClick={() => void handleSave(false)} disabled={saving}>
+              Guardar organizado
+            </button>
+            {(savedPath || saveError) && <p className={clsx("save-message", saveError && "is-error")}>{saveError ?? savedPath}</p>}
+          </section>
+        )}
 
         <footer className="widget-footer">
           <a

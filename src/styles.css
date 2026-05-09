@@ -394,6 +394,92 @@ button {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
+.save-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(8, 20, 38, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.save-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #e0f2fe;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.save-panel-head button,
+.save-primary {
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  border-radius: 999px;
+  color: #e0f2fe;
+  background: rgba(125, 211, 252, 0.1);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.save-panel-head button {
+  padding: 5px 9px;
+}
+
+.save-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.save-fields input {
+  min-width: 0;
+  border: 1px solid rgba(186, 230, 253, 0.16);
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: #f8fbff;
+  background: rgba(5, 18, 34, 0.72);
+  font-size: 11px;
+  outline: 0;
+}
+
+.save-fields input:last-child {
+  grid-column: 1 / -1;
+}
+
+.save-fields input::placeholder {
+  color: rgba(224, 242, 254, 0.5);
+}
+
+.save-primary {
+  justify-self: start;
+  padding: 7px 11px;
+}
+
+.save-panel button:disabled,
+.save-fields input:disabled {
+  cursor: default;
+  opacity: 0.52;
+}
+
+.save-message {
+  margin: 0;
+  overflow: hidden;
+  color: rgba(215, 241, 255, 0.72);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-message.is-error {
+  color: #fecaca;
+}
+
 .track-wave {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr);
