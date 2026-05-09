@@ -22,6 +22,10 @@ use crate::manifest::SegmentManifest;
 const SAMPLE_RATE: u32 = 48_000;
 #[cfg(feature = "native-audio")]
 const OPUS_FRAME_SAMPLES: usize = 960;
+#[cfg(feature = "native-audio")]
+const FINAL_MIX_MIC_GAIN: f32 = 2.1;
+#[cfg(feature = "native-audio")]
+const FINAL_MIX_SYSTEM_GAIN: f32 = 0.55;
 
 pub fn record_segment_to_opus(
     track: &str,
@@ -402,14 +406,23 @@ fn mix_to_stereo(mic_pcm: &[f32], system_pcm: &[f32]) -> Vec<f32> {
     let mut mixed = Vec::with_capacity(frames * 2);
 
     for frame in 0..frames {
-        let mic = mic_pcm.get(frame).copied().unwrap_or_default() * 0.85;
-        let left = system_pcm.get(frame * 2).copied().unwrap_or_default() * 0.72;
-        let right = system_pcm.get(frame * 2 + 1).copied().unwrap_or_default() * 0.72;
-        mixed.push((left + mic).clamp(-1.0, 1.0));
-        mixed.push((right + mic).clamp(-1.0, 1.0));
+        let mic = mic_pcm.get(frame).copied().unwrap_or_default() * FINAL_MIX_MIC_GAIN;
+        let left = system_pcm.get(frame * 2).copied().unwrap_or_default() * FINAL_MIX_SYSTEM_GAIN;
+        let right = system_pcm.get(frame * 2 + 1).copied().unwrap_or_default() * FINAL_MIX_SYSTEM_GAIN;
+        mixed.push(soft_limit(left + mic));
+        mixed.push(soft_limit(right + mic));
     }
 
     mixed
+}
+
+#[cfg(feature = "native-audio")]
+fn soft_limit(sample: f32) -> f32 {
+    if sample.abs() <= 0.95 {
+        sample
+    } else {
+        (sample * 0.82).tanh()
+    }
 }
 
 #[cfg(feature = "native-audio")]

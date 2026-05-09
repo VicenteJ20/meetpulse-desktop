@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
-import { History, Maximize2, Mic, Minus, MonitorSpeaker, Pause, Play, Square, X } from "lucide-react";
+import type { CSSProperties, PointerEvent, ReactNode } from "react";
+import { ExternalLink, History, Maximize2, Mic, Minus, MonitorSpeaker, Pause, Play, Square, X } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
-import { useAudioMeters } from "../hooks/useAudioMeters";
-import { openRecordingFolder } from "../tauri/commands";
+import { openExternalUrl, openRecordingFolder } from "../tauri/commands";
 import { closeWindow, minimizeWindow, startWindowDrag } from "../tauri/window";
 import { useRecorderStore } from "../store/recorderStore";
 
@@ -35,14 +34,9 @@ export function App() {
   const isPaused = status === "paused";
   const isBusy = loading || status === "starting" || status === "stopping";
   const isActive = isRecording || isPaused || status === "starting" || status === "stopping";
-  const {
-    micAvailable,
-    micBars,
-    micLevel: liveMicLevel,
-  } = useAudioMeters(isRecording);
-  const micLevel = micAvailable ? liveMicLevel : (snapshot?.mic.rms ?? 0);
+  const micLevel = snapshot?.mic.status === "recording" ? (snapshot?.mic.rms ?? 0) : 0;
   const systemLevel = snapshot?.system.status === "recording" ? (snapshot?.system.rms ?? 0) : 0;
-  const visibleMicBars = micAvailable ? micBars : createMeterBars(micLevel);
+  const visibleMicBars = createMeterBars(micLevel);
   const visibleSystemBars = createMeterBars(systemLevel);
   const currentRecordingName = snapshot?.recording_id ? snapshot.recording_id.replace("rec_", "") : "sin archivo";
 
@@ -60,18 +54,18 @@ export function App() {
     void start();
   }
 
-  function handleDragRegionMouseDown(event: MouseEvent<HTMLElement>) {
+  function handleTitlebarPointerDown(event: PointerEvent<HTMLElement>) {
     if (event.button !== 0) return;
-    const target = event.target as HTMLElement;
-    if (target.closest("button, a, input, textarea, select")) return;
+    if (event.target instanceof HTMLElement && event.target.closest("button")) return;
     void startWindowDrag();
   }
 
   return (
-    <main className="widget-shell" onMouseDown={handleDragRegionMouseDown}>
+    <main className="widget-shell">
       <header
         className="windows-titlebar"
         data-tauri-drag-region
+        onPointerDown={handleTitlebarPointerDown}
       >
         <div className="window-brand" data-tauri-drag-region>
           <span className="window-icon" />
@@ -105,10 +99,11 @@ export function App() {
             <p className="recording-title">{statusTitle(status)}</p>
             <p className="recording-subtitle">{statusSubtitle(status)}</p>
           </div>
-          <span className="recording-file" data-tauri-drag-region>
-            - {currentRecordingName}
-          </span>
         </header>
+
+        <div className="recording-file" title={currentRecordingName} data-tauri-drag-region>
+          {currentRecordingName}
+        </div>
 
         <div className="duration-row" data-tauri-drag-region>
           <span className="duration-value">{duration}</span>
@@ -160,9 +155,20 @@ export function App() {
         </div>
 
         <footer className="widget-footer">
-          <span className="timeline-label" data-tauri-drag-region>
-            - LÍNEA DE GRABACIÓN
-          </span>
+          <a
+            className="timeline-label"
+            href="https://vicentejorquera.dev"
+            target="_blank"
+            rel="noreferrer"
+            title="vicentejorquera.dev"
+            onClick={(event) => {
+              event.preventDefault();
+              void openExternalUrl("https://vicentejorquera.dev");
+            }}
+          >
+            Desarrollado por Vicente Jorquera
+            <ExternalLink />
+          </a>
           <button
             type="button"
             className="history-button"
@@ -314,7 +320,7 @@ function statusTitle(status: string): string {
   if (status === "error") return "Error";
   if (status === "recording") return "Grabando";
   if (status === "starting") return "Preparando";
-  return "Grabador";
+  return "Meetings Assistant";
 }
 
 function statusSubtitle(status: string): string {
@@ -323,7 +329,7 @@ function statusSubtitle(status: string): string {
   if (status === "recording") return "Captura local";
   if (status === "starting") return "Preparando audio";
   if (status === "stopping") return "Cerrando archivos";
-  return "Modo local";
+  return "Grabador de audio";
 }
 
 function useLiveDuration(

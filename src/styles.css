@@ -8,6 +8,10 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #root {
@@ -19,7 +23,7 @@ body,
 
 body {
   overflow: hidden;
-  background: #071226;
+  background: #08182f;
 }
 
 button {
@@ -29,10 +33,11 @@ button {
 
 .widget-shell {
   display: flex;
-  min-height: 100vh;
-  align-items: center;
-  justify-content: center;
-  padding: 34px 6px 6px;
+  height: 100vh;
+  min-height: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 32px 0 0;
   overflow: hidden;
   user-select: none;
 }
@@ -49,14 +54,17 @@ button {
   justify-content: space-between;
   color: rgba(229, 231, 235, 0.86);
   background: #202124;
+  cursor: move;
   user-select: none;
 }
 
 .window-brand {
   display: flex;
   min-width: 0;
+  flex: 1;
   align-items: center;
   gap: 8px;
+  height: 100%;
   padding-left: 10px;
   font-size: 12px;
   font-weight: 600;
@@ -78,6 +86,8 @@ button {
 .window-actions {
   display: flex;
   height: 100%;
+  flex: 0 0 auto;
+  cursor: default;
 }
 
 .window-actions button {
@@ -112,14 +122,17 @@ button {
 
 .recorder-card {
   position: relative;
-  width: min(100%, 356px);
-  min-height: 512px;
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(155, 196, 255, 0.2);
-  border-radius: 8px;
-  padding: 32px 20px 20px;
+  border: 0;
+  border-radius: 0;
+  padding: 34px 28px 22px;
   color: #fffef0;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
+  box-shadow: none;
   background:
     linear-gradient(180deg, rgba(7, 18, 38, 0.99) 0%, rgba(12, 45, 84, 0.97) 45%, rgba(22, 112, 184, 0.98) 100%),
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 28px);
@@ -152,8 +165,7 @@ button {
 .recorder-header {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
+  min-width: 0;
 }
 
 .recording-title {
@@ -186,8 +198,13 @@ button {
 }
 
 .recording-file {
+  width: 100%;
   margin-top: 12px;
-  max-width: 128px;
+  border-radius: 6px;
+  padding: 6px 8px;
+  overflow: hidden;
+  color: rgba(215, 241, 255, 0.78);
+  background: rgba(8, 20, 38, 0.28);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -197,7 +214,7 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 20px;
+  margin-top: 18px;
 }
 
 .duration-value {
@@ -233,7 +250,7 @@ button {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 18px;
-  margin-top: 36px;
+  margin-top: 34px;
 }
 
 .control-stack {
@@ -292,7 +309,7 @@ button {
   grid-template-rows: 1fr 1fr;
   gap: 10px;
   align-items: center;
-  margin-top: 32px;
+  margin-top: 30px;
   border-radius: 8px;
   padding: 12px;
   background: rgba(8, 20, 38, 0.86);
@@ -349,7 +366,22 @@ button {
 }
 
 .timeline-label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
   color: rgba(215, 241, 255, 0.72);
+  text-decoration: none;
+}
+
+.timeline-label:hover {
+  color: #e0f2fe;
+}
+
+.timeline-label svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
 }
 
 .widget-footer {
@@ -357,7 +389,8 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 14px;
+  margin-top: auto;
+  padding-top: 14px;
 }
 
 .history-button {

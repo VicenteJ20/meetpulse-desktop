@@ -55,6 +55,17 @@ pub async fn open_recording_folder(
 }
 
 #[tauri::command]
+pub async fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
+    if url != "https://vicentejorquera.dev" {
+        return Err("url externa no permitida".to_string());
+    }
+
+    app.opener()
+        .open_url(url, None::<String>)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn get_audio_devices() -> Result<Vec<AudioDevice>, String> {
     Ok(audio::list_devices())
 }

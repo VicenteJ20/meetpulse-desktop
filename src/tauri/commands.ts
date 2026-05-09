@@ -178,6 +178,14 @@ export function openRecordingFolder(recordingId: string): Promise<void> {
   return invoke("open_recording_folder", { recordingId });
 }
 
+export function openExternalUrl(url: string): Promise<void> {
+  if (!isTauriRuntime) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return Promise.resolve();
+  }
+  return invoke("open_external_url", { url });
+}
+
 export function getAudioDevices(): Promise<AudioDevice[]> {
   if (!isTauriRuntime) {
     return Promise.resolve([

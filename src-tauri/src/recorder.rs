@@ -173,6 +173,7 @@ impl RecorderManager {
             last_error: None,
         }));
 
+        self.workers.push(self.spawn_snapshot_worker(active.clone()));
         self.workers.push(self.spawn_track_worker(active.clone(), "mic"));
         self.workers.push(self.spawn_track_worker(active.clone(), "system"));
         self.active = Some(active);
@@ -261,24 +262,6 @@ impl RecorderManager {
 
         thread::spawn(move || {
             let mut index = 1_u32;
-            let snapshot_active = active.clone();
-            let snapshot_app = app.clone();
-            let snapshot_stop = stop_flag.clone();
-            let snapshot_thread = thread::spawn(move || {
-                while !snapshot_stop.load(Ordering::SeqCst) {
-                    thread::sleep(Duration::from_millis(180));
-                    if let Ok(session) = snapshot_active.lock() {
-                        if session.status == "recording" {
-                            let _ = snapshot_app.emit(
-                                "recorder://snapshot",
-                                RecorderEvent {
-                                    snapshot: session.snapshot(),
-                                },
-                            );
-                        }
-                    }
-                }
-            });
 
             loop {
                 if stop_flag.load(Ordering::SeqCst) {
@@ -338,8 +321,27 @@ impl RecorderManager {
                     }
                 }
             }
+        })
+    }
 
-            let _ = snapshot_thread.join();
+    fn spawn_snapshot_worker(&self, active: Arc<StdMutex<ActiveRecording>>) -> JoinHandle<()> {
+        let app = self.app.clone();
+        let stop_flag = self.stop_flag.clone();
+
+        thread::spawn(move || {
+            while !stop_flag.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(500));
+                if let Ok(session) = active.lock() {
+                    if session.status == "recording" {
+                        let _ = app.emit(
+                            "recorder://snapshot",
+                            RecorderEvent {
+                                snapshot: session.snapshot(),
+                            },
+                        );
+                    }
+                }
+            }
         })
     }
 

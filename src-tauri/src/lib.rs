@@ -32,6 +32,7 @@ pub fn run() {
             commands::stop_recording,
             commands::list_recordings,
             commands::open_recording_folder,
+            commands::open_external_url,
             commands::get_audio_devices,
             commands::select_microphone
         ])
