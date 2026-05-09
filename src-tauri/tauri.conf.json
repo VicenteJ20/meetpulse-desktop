@@ -21,7 +21,7 @@
         "maxHeight": 556,
         "resizable": false,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "alwaysOnTop": false,
         "skipTaskbar": false
       }

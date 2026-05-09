@@ -47,6 +47,9 @@ button {
   align-items: center;
   justify-content: center;
   padding: 0;
+  background:
+    linear-gradient(135deg, rgba(6, 16, 32, 0.99), rgba(10, 54, 92, 0.98) 62%, rgba(11, 96, 138, 0.97)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 26px);
 }
 
 .windows-titlebar {
@@ -588,21 +591,17 @@ button {
 
 .compact-recorder {
   display: none;
-  width: calc(100% - 4px);
-  height: calc(100% - 4px);
+  width: 100%;
+  height: 100%;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   border: 0;
-  border-radius: 999px;
-  padding: 8px 10px;
+  border-radius: 0;
+  padding: 8px 12px;
   color: #e0f2fe;
-  background:
-    linear-gradient(135deg, rgba(6, 16, 32, 0.98), rgba(10, 54, 92, 0.97) 62%, rgba(11, 96, 138, 0.96)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 26px);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 8px 22px rgba(0, 0, 0, 0.28);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   cursor: move;
 }
 
