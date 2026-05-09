@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 
 use crate::{
-    audio::TrackHealth,
+    audio::{AudioDeviceSelection, TrackHealth},
     finalizer::FinalAudioBuilder,
     manifest::{Manifest, SegmentManifest},
     native_audio::{f32_from_bits, f32_to_bits, record_segment_to_opus},
@@ -107,17 +107,24 @@ pub struct RecorderManager {
     app: AppHandle,
     paths: AppPaths,
     storage: Arc<Storage>,
+    audio_devices: Arc<StdMutex<AudioDeviceSelection>>,
     active: Option<Arc<StdMutex<ActiveRecording>>>,
     stop_flag: Arc<AtomicBool>,
     workers: Vec<JoinHandle<()>>,
 }
 
 impl RecorderManager {
-    pub fn new(app: AppHandle, paths: AppPaths, storage: Arc<Storage>) -> Self {
+    pub fn new(
+        app: AppHandle,
+        paths: AppPaths,
+        storage: Arc<Storage>,
+        audio_devices: Arc<StdMutex<AudioDeviceSelection>>,
+    ) -> Self {
         Self {
             app,
             paths,
             storage,
+            audio_devices,
             active: None,
             stop_flag: Arc::new(AtomicBool::new(false)),
             workers: Vec::new(),
@@ -259,6 +266,7 @@ impl RecorderManager {
         let storage = self.storage.clone();
         let app = self.app.clone();
         let stop_flag = self.stop_flag.clone();
+        let audio_devices = self.audio_devices.clone();
 
         thread::spawn(move || {
             let mut index = 1_u32;
@@ -268,8 +276,12 @@ impl RecorderManager {
                     break;
                 }
 
-                let (recording_dir, recording_id, should_record, rms_meter) = {
+                let (recording_dir, recording_id, should_record, rms_meter, device_id) = {
                     let session = active.lock().expect("active recorder mutex poisoned");
+                    let device_id = audio_devices
+                        .lock()
+                        .expect("audio device selection mutex poisoned")
+                        .device_id_for_track(track);
                     (
                         session.dir.clone(),
                         session.id.clone(),
@@ -279,6 +291,7 @@ impl RecorderManager {
                         } else {
                             session.system_rms.clone()
                         },
+                        device_id,
                     )
                 };
 
@@ -287,7 +300,7 @@ impl RecorderManager {
                     continue;
                 }
 
-                let result = write_native_segment(&recording_dir, track, index, stop_flag.clone(), rms_meter).and_then(|segment| {
+                let result = write_native_segment(&recording_dir, track, index, stop_flag.clone(), rms_meter, device_id).and_then(|segment| {
                     let mut session = active.lock().expect("active recorder mutex poisoned");
                     if session.status == "recording" || session.status == "stopping" {
                         session.disk_bytes += segment.size_bytes;
@@ -361,6 +374,7 @@ fn write_native_segment(
     index: u32,
     stop_flag: Arc<AtomicBool>,
     rms_meter: Arc<AtomicU32>,
+    device_id: Option<String>,
 ) -> anyhow::Result<SegmentManifest> {
     if track != "mic" && track != "system" {
         bail!("track desconocido: {track}");
@@ -371,7 +385,7 @@ fn write_native_segment(
     let final_path = recording_dir.join(&relative_path);
     let tmp_path = final_path.with_extension("opus.tmp");
 
-    record_segment_to_opus(track, &tmp_path, SEGMENT_DURATION, stop_flag, rms_meter)
+    record_segment_to_opus(track, &tmp_path, SEGMENT_DURATION, stop_flag, rms_meter, device_id.as_deref())
         .with_context(|| format!("capturing native {track} to {}", tmp_path.display()))?;
     fs::rename(&tmp_path, &final_path)
         .with_context(|| format!("committing {} to {}", tmp_path.display(), final_path.display()))?;

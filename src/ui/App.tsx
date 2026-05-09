@@ -5,9 +5,13 @@ import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
 import {
   defaultRecordingFileName,
+  getAudioDevices,
+  getSelectedAudioDevices,
   openExternalUrl,
   openRecordingFolder,
   saveRecordingToLibrary,
+  selectAudioDevice,
+  type AudioDevice,
 } from "../tauri/commands";
 import { applyWindowMode, closeWindow, minimizeWindow, startWindowDrag } from "../tauri/window";
 import { useRecorderStore } from "../store/recorderStore";
@@ -29,10 +33,43 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedPath, setSavedPath] = useState<string | null>(null);
+  const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
+  const [selectedInputId, setSelectedInputId] = useState("");
+  const [selectedOutputId, setSelectedOutputId] = useState("");
+  const [deviceError, setDeviceError] = useState<string | null>(null);
 
   useEffect(() => {
     void init();
   }, [init]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDevices() {
+      try {
+        const [devices, selection] = await Promise.all([getAudioDevices(), getSelectedAudioDevices()]);
+        if (cancelled) return;
+        setAudioDevices(devices);
+        const defaultInput =
+          devices.find((device) => device.kind === "input" && device.is_default)?.id ??
+          devices.find((device) => device.kind === "input")?.id ??
+          "";
+        const defaultOutput =
+          devices.find((device) => device.kind === "output" && device.is_default)?.id ??
+          devices.find((device) => device.kind === "output")?.id ??
+          "";
+        setSelectedInputId(devices.some((device) => device.id === selection.input_device_id) ? selection.input_device_id ?? "" : defaultInput);
+        setSelectedOutputId(devices.some((device) => device.id === selection.output_device_id) ? selection.output_device_id ?? "" : defaultOutput);
+        setDeviceError(null);
+      } catch (error) {
+        if (!cancelled) setDeviceError(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    void loadDevices();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -57,6 +94,8 @@ export function App() {
   const isPaused = status === "paused";
   const isBusy = loading || status === "starting" || status === "stopping";
   const isActive = isRecording || isPaused || status === "starting" || status === "stopping";
+  const inputDevices = audioDevices.filter((device) => device.kind === "input");
+  const outputDevices = audioDevices.filter((device) => device.kind === "output");
   const micLevel = snapshot?.mic.status === "recording" ? (snapshot?.mic.rms ?? 0) : 0;
   const systemLevel = snapshot?.system.status === "recording" ? (snapshot?.system.rms ?? 0) : 0;
   const visibleMicBars = createMeterBars(micLevel);
@@ -109,6 +148,23 @@ export function App() {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDeviceChange(kind: "input" | "output", deviceId: string) {
+    setDeviceError(null);
+    if (kind === "input") {
+      setSelectedInputId(deviceId);
+    } else {
+      setSelectedOutputId(deviceId);
+    }
+
+    try {
+      const selection = await selectAudioDevice(kind, deviceId);
+      setSelectedInputId(selection.input_device_id ?? selectedInputId);
+      setSelectedOutputId(selection.output_device_id ?? selectedOutputId);
+    } catch (error) {
+      setDeviceError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -198,6 +254,25 @@ export function App() {
         <div className="recording-file" title={visibleRecordingName} data-tauri-drag-region>
           <span>Archivo</span>
           <strong>{visibleRecordingName}</strong>
+        </div>
+
+        <div className="device-selectors">
+          <DeviceSelect
+            label="Microfono"
+            icon={<Mic />}
+            devices={inputDevices}
+            value={selectedInputId}
+            disabled={isActive}
+            onChange={(deviceId) => void handleDeviceChange("input", deviceId)}
+          />
+          <DeviceSelect
+            label="Audio PC"
+            icon={<MonitorSpeaker />}
+            devices={outputDevices}
+            value={selectedOutputId}
+            disabled={isActive}
+            onChange={(deviceId) => void handleDeviceChange("output", deviceId)}
+          />
         </div>
 
         <div className="duration-row" data-tauri-drag-region>
@@ -343,10 +418,50 @@ export function App() {
           </section>
         )}
 
-        {(error || snapshot?.last_error) && <div className="widget-error">{error ?? snapshot?.last_error}</div>}
+        {(error || snapshot?.last_error || deviceError) && <div className="widget-error">{error ?? snapshot?.last_error ?? deviceError}</div>}
       </section>
       )}
     </main>
+  );
+}
+
+function DeviceSelect({
+  label,
+  icon,
+  devices,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  icon: ReactNode;
+  devices: AudioDevice[];
+  value: string;
+  disabled: boolean;
+  onChange: (deviceId: string) => void;
+}) {
+  return (
+    <label className="device-select">
+      <span>
+        {icon}
+        {label}
+      </span>
+      <select
+        value={value}
+        disabled={disabled || devices.length === 0}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      >
+        {devices.length === 0 ? (
+          <option value="">No disponible</option>
+        ) : (
+          devices.map((device) => (
+            <option key={device.id} value={device.id}>
+              {device.name}{device.is_default ? " (default)" : ""}
+            </option>
+          ))
+        )}
+      </select>
+    </label>
   );
 }
 

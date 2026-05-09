@@ -12,7 +12,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::{
     app_state::AppState,
-    audio::{self, AudioDevice},
+    audio::{self, AudioDevice, AudioDeviceSelection},
     manifest::Manifest,
     recorder::RecorderSnapshot,
     storage::RecordingSummary,
@@ -98,7 +98,53 @@ pub async fn get_audio_devices() -> Result<Vec<AudioDevice>, String> {
 }
 
 #[tauri::command]
-pub async fn select_microphone(_device_id: String) -> Result<(), String> {
+pub async fn get_selected_audio_devices(state: State<'_, AppState>) -> Result<AudioDeviceSelection, String> {
+    Ok(state
+        .audio_devices
+        .lock()
+        .map_err(|_| "no se pudo leer la seleccion de audio".to_string())?
+        .clone())
+}
+
+#[tauri::command]
+pub async fn select_audio_device(
+    state: State<'_, AppState>,
+    kind: String,
+    device_id: Option<String>,
+) -> Result<AudioDeviceSelection, String> {
+    if kind != "input" && kind != "output" {
+        return Err("tipo de dispositivo invalido".to_string());
+    }
+
+    if let Some(device_id) = device_id.as_deref() {
+        let exists = audio::list_devices()
+            .into_iter()
+            .any(|device| device.kind == kind && device.id == device_id);
+        if !exists {
+            return Err("dispositivo de audio no disponible".to_string());
+        }
+    }
+
+    let selection = {
+        let mut selection = state
+            .audio_devices
+            .lock()
+            .map_err(|_| "no se pudo actualizar la seleccion de audio".to_string())?;
+        if kind == "input" {
+            selection.input_device_id = device_id;
+        } else {
+            selection.output_device_id = device_id;
+        }
+        selection.clone()
+    };
+
+    audio::save_device_selection(&state.audio_device_config, &selection).map_err(to_message)?;
+    Ok(selection)
+}
+
+#[tauri::command]
+pub async fn select_microphone(state: State<'_, AppState>, device_id: String) -> Result<(), String> {
+    select_audio_device(state, "input".to_string(), Some(device_id)).await?;
     Ok(())
 }
 

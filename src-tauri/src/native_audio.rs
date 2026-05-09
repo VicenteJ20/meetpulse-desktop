@@ -39,10 +39,11 @@ pub fn record_segment_to_opus(
     duration: Duration,
     _stop_flag: Arc<AtomicBool>,
     _rms_meter: Arc<AtomicU32>,
+    _device_id: Option<&str>,
 ) -> anyhow::Result<()> {
     #[cfg(feature = "native-audio")]
     {
-        record_native_segment_to_opus(track, path, duration, _stop_flag, _rms_meter)
+        record_native_segment_to_opus(track, path, duration, _stop_flag, _rms_meter, _device_id)
     }
 
     #[cfg(not(feature = "native-audio"))]
@@ -58,10 +59,11 @@ fn record_native_segment_to_opus(
     duration: Duration,
     stop_flag: Arc<AtomicBool>,
     rms_meter: Arc<AtomicU32>,
+    device_id: Option<&str>,
 ) -> anyhow::Result<()> {
     match track {
-        "mic" => record_wasapi_segment(track, path, duration, stop_flag, rms_meter, 1, false),
-        "system" => record_wasapi_segment(track, path, duration, stop_flag, rms_meter, 2, true),
+        "mic" => record_wasapi_segment(track, path, duration, stop_flag, rms_meter, 1, false, device_id),
+        "system" => record_wasapi_segment(track, path, duration, stop_flag, rms_meter, 2, true, device_id),
         _ => bail!("track desconocido: {track}"),
     }
 }
@@ -75,10 +77,11 @@ fn record_wasapi_segment(
     rms_meter: Arc<AtomicU32>,
     channels: u16,
     loopback: bool,
+    device_id: Option<&str>,
 ) -> anyhow::Result<()> {
     use std::collections::VecDeque;
     use std::time::Instant;
-    use wasapi::{get_default_device, initialize_mta, Direction, SampleType, ShareMode, WaveFormat};
+    use wasapi::{initialize_mta, Direction, SampleType, ShareMode, WaveFormat};
 
     let _ = initialize_mta().ok();
 
@@ -87,7 +90,7 @@ fn record_wasapi_segment(
     } else {
         Direction::Capture
     };
-    let device = wasapi_result(get_default_device(&direction))?;
+    let device = resolve_wasapi_device(&direction, device_id)?;
     let mut audio_client = wasapi_result(device.get_iaudioclient())?;
     let desired_format = WaveFormat::new(32, 32, &SampleType::Float, SAMPLE_RATE as usize, channels as usize, None);
     let blockalign = desired_format.get_blockalign() as usize;
@@ -154,6 +157,45 @@ fn record_wasapi_segment(
     rms_meter.store(0, Ordering::Relaxed);
     tracing::debug!(track, "native audio segment written");
     Ok(())
+}
+
+#[cfg(feature = "native-audio")]
+fn resolve_wasapi_device(direction: &wasapi::Direction, device_id: Option<&str>) -> anyhow::Result<wasapi::Device> {
+    use wasapi::{get_default_device, DeviceCollection};
+
+    let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
+        return wasapi_result(get_default_device(direction));
+    };
+
+    let expected_kind = match direction {
+        wasapi::Direction::Capture => "input",
+        wasapi::Direction::Render => "output",
+    };
+    let Some((kind, index, name)) = parse_audio_device_id(device_id) else {
+        return wasapi_result(get_default_device(direction));
+    };
+    if kind != expected_kind {
+        return wasapi_result(get_default_device(direction));
+    }
+
+    let collection = wasapi_result(DeviceCollection::new(direction))?;
+    if let Ok(device) = collection.get_device_at_index(index) {
+        if device.get_friendlyname().ok().as_deref() == Some(name.as_str()) {
+            return Ok(device);
+        }
+    }
+
+    wasapi_result(collection.get_device_with_name(&name))
+        .or_else(|_| wasapi_result(get_default_device(direction)))
+}
+
+#[cfg(feature = "native-audio")]
+fn parse_audio_device_id(device_id: &str) -> Option<(&str, u32, String)> {
+    let mut parts = device_id.splitn(3, ':');
+    let kind = parts.next()?;
+    let index = parts.next()?.parse::<u32>().ok()?;
+    let name = parts.next()?.to_string();
+    Some((kind, index, name))
 }
 
 #[cfg(feature = "native-audio")]

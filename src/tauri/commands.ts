@@ -50,6 +50,11 @@ export type AudioDevice = {
   is_default: boolean;
 };
 
+export type AudioDeviceSelection = {
+  input_device_id?: string | null;
+  output_device_id?: string | null;
+};
+
 export type SavedAudio = {
   path: string;
 };
@@ -224,6 +229,24 @@ export function getAudioDevices(): Promise<AudioDevice[]> {
     ]);
   }
   return invoke("get_audio_devices");
+}
+
+export function getSelectedAudioDevices(): Promise<AudioDeviceSelection> {
+  if (!isTauriRuntime) {
+    return Promise.resolve({
+      input_device_id: localStorage.getItem("mock-input-device") ?? "web-input",
+      output_device_id: localStorage.getItem("mock-output-device") ?? "web-output",
+    });
+  }
+  return invoke("get_selected_audio_devices");
+}
+
+export function selectAudioDevice(kind: "input" | "output", deviceId: string): Promise<AudioDeviceSelection> {
+  if (!isTauriRuntime) {
+    localStorage.setItem(kind === "input" ? "mock-input-device" : "mock-output-device", deviceId);
+    return getSelectedAudioDevices();
+  }
+  return invoke("select_audio_device", { kind, deviceId });
 }
 
 export function defaultRecordingFileName(date: Date): string {

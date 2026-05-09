@@ -35,6 +35,8 @@ pub fn run() {
             commands::open_external_url,
             commands::save_recording_to_library,
             commands::get_audio_devices,
+            commands::get_selected_audio_devices,
+            commands::select_audio_device,
             commands::select_microphone
         ])
         .run(tauri::generate_context!())
