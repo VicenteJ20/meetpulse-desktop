@@ -20,6 +20,11 @@ export async function startWindowDrag() {
   await getCurrentWindow().startDragging();
 }
 
+export async function setWindowAlwaysOnTop(pinned: boolean) {
+  if (!isTauriRuntime) return;
+  await getCurrentWindow().setAlwaysOnTop(pinned);
+}
+
 export async function applyWindowMode(compact: boolean) {
   if (!isTauriRuntime) return;
 

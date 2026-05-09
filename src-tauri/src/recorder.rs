@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU32, Ordering},
         Arc, Mutex as StdMutex,
@@ -11,7 +11,8 @@ use std::{
 };
 
 use anyhow::{bail, Context};
-use chrono::Utc;
+use chrono::{Local, Utc};
+use directories::UserDirs;
 use rand::{distributions::Alphanumeric, Rng};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -246,7 +247,15 @@ impl RecorderManager {
         session.manifest.completed_at = Some(Utc::now());
         session.manifest.save_atomic(&session.dir)?;
         let final_path = FinalAudioBuilder::build(&session.dir, &session.manifest)?;
-        let final_path_string = final_path.as_ref().map(|path| path.to_string_lossy().to_string());
+        let final_path_string = final_path.as_ref().map(|path| {
+            save_automatic_draft(path, &session.manifest.created_at)
+                .unwrap_or_else(|error| {
+                    tracing::warn!(%error, "could not save automatic draft copy");
+                    path.clone()
+                })
+                .to_string_lossy()
+                .to_string()
+        });
         let duration_ms = session.snapshot().duration_ms;
         self.storage.update_recording_completed(
             &session.id,
@@ -422,4 +431,54 @@ fn create_recording_id() -> String {
         .collect::<String>()
         .to_lowercase();
     format!("rec_{}_{}", Utc::now().format("%Y-%m-%d_%H-%M-%S"), suffix)
+}
+
+fn save_automatic_draft(source: &Path, created_at: &chrono::DateTime<Utc>) -> anyhow::Result<PathBuf> {
+    let user_dirs = UserDirs::new().context("resolving user directories")?;
+    let music = user_dirs
+        .audio_dir()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| user_dirs.home_dir().join("Music"));
+    let drafts_dir = music.join("Meetings Assistant").join("drafts");
+    fs::create_dir_all(&drafts_dir).with_context(|| format!("creating {}", drafts_dir.display()))?;
+
+    let base_name = created_at
+        .with_timezone(&Local)
+        .format("grabacion_%d_%m_%Y_%H_%M")
+        .to_string();
+    let destination = available_opus_path(&drafts_dir, &base_name);
+    copy_atomic(source, &destination)?;
+    Ok(destination)
+}
+
+fn available_opus_path(dir: &Path, base_name: &str) -> PathBuf {
+    let mut candidate = dir.join(format!("{base_name}.opus"));
+    let mut suffix = 2_u32;
+    while candidate.exists() {
+        candidate = dir.join(format!("{base_name}_{suffix}.opus"));
+        suffix += 1;
+    }
+    candidate
+}
+
+fn copy_atomic(source: &Path, destination: &Path) -> anyhow::Result<()> {
+    let tmp = destination.with_extension("opus.tmp");
+    if tmp.exists() {
+        let _ = fs::remove_file(&tmp);
+    }
+    let result = (|| {
+        fs::copy(source, &tmp).with_context(|| format!("copying {} to {}", source.display(), tmp.display()))?;
+        let file = fs::File::open(&tmp)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&tmp, destination)
+            .with_context(|| format!("committing {} to {}", tmp.display(), destination.display()))?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+
+    result
 }

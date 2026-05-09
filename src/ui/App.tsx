@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties, PointerEvent, ReactNode } from "react";
-import { ExternalLink, History, Maximize2, Mic, Minus, MonitorSpeaker, Pause, Play, Square, X } from "lucide-react";
+import { ExternalLink, History, Maximize2, Mic, Minus, MonitorSpeaker, Pause, Pin, Play, Square, X } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
 import {
@@ -13,7 +13,7 @@ import {
   selectAudioDevice,
   type AudioDevice,
 } from "../tauri/commands";
-import { applyWindowMode, closeWindow, minimizeWindow, startWindowDrag } from "../tauri/window";
+import { applyWindowMode, closeWindow, minimizeWindow, setWindowAlwaysOnTop, startWindowDrag } from "../tauri/window";
 import { useRecorderStore } from "../store/recorderStore";
 
 const bars = [
@@ -27,6 +27,7 @@ export function App() {
   const [now, setNow] = useState(() => Date.now());
   const [showHistory, setShowHistory] = useState(false);
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem("recorder-view-mode") === "compact");
+  const [pinned, setPinned] = useState(() => localStorage.getItem("recorder-window-pinned") === "true");
   const [saveClient, setSaveClient] = useState("");
   const [saveProject, setSaveProject] = useState("");
   const [saveFileName, setSaveFileName] = useState("");
@@ -82,6 +83,11 @@ export function App() {
   }, [compactMode]);
 
   useEffect(() => {
+    localStorage.setItem("recorder-window-pinned", pinned ? "true" : "false");
+    void setWindowAlwaysOnTop(pinned);
+  }, [pinned]);
+
+  useEffect(() => {
     setSaveError(null);
     setSavedPath(null);
     setSaveFileName("");
@@ -103,6 +109,12 @@ export function App() {
   const suggestedFileName = snapshot?.started_at ? defaultRecordingFileName(new Date(snapshot.started_at)) : defaultRecordingFileName(new Date());
   const visibleRecordingName = snapshot?.recording_id ? suggestedFileName : "sin archivo";
   const isCompleted = status === "completed" && Boolean(snapshot?.recording_id);
+
+  useEffect(() => {
+    if (isCompleted && compactMode) {
+      setCompactMode(false);
+    }
+  }, [compactMode, isCompleted]);
 
   function handlePrimary() {
     if (isPaused) {
@@ -191,6 +203,15 @@ export function App() {
             </button>
             <button type="button" className="is-disabled" aria-label="Maximizar deshabilitado" title="No expandible">
               <Maximize2 />
+            </button>
+            <button
+              type="button"
+              className={clsx(pinned && "is-active")}
+              onClick={() => setPinned((value) => !value)}
+              aria-label={pinned ? "Quitar siempre encima" : "Mantener encima"}
+              title={pinned ? "Quitar siempre encima" : "Mantener encima"}
+            >
+              <Pin />
             </button>
             <button type="button" className="close" onClick={() => void closeWindow()} aria-label="Cerrar" title="Cerrar">
               <X />
