@@ -10,7 +10,7 @@
 ## Segmentacion
 
 - [ ] Cada segmento se escribe primero como `.tmp`.
-- [ ] El segmento confirmado queda como `.wav` en modo dev o `.opus` en modo nativo.
+- [ ] El segmento confirmado queda como `.opus` Ogg Opus.
 - [ ] `manifest.json` se actualiza de forma atomica.
 - [ ] SQLite registra segmentos confirmados.
 - [ ] El uso de RAM permanece estable.

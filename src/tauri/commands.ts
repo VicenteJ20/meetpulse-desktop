@@ -84,7 +84,7 @@ export function getRecorderSnapshot(): Promise<RecorderSnapshot> {
 
 export function startRecording(): Promise<RecorderSnapshot> {
   if (!isTauriRuntime) {
-    const id = `rec_web_${new Date().toISOString().replaceAll(":", "-").slice(0, 19)}`;
+    const id = `rec_web_${new Date().toISOString().replace(/:/g, "-").slice(0, 19)}`;
     mockStartedAt = Date.now();
     mockPausedAt = 0;
     mockPausedMs = 0;
@@ -147,7 +147,7 @@ export function stopRecording(): Promise<RecorderSnapshot> {
       completed_at: new Date().toISOString(),
       duration_ms: mockSnapshot.duration_ms,
       folder_path: "web-mock",
-      final_audio_path: "web-mock/final/mixed.wav",
+      final_audio_path: "web-mock/final",
       segments: Math.max(1, Math.floor(mockSnapshot.duration_ms / 10_000) * 2),
       size_bytes: Math.max(4096, Math.floor(mockSnapshot.duration_ms / 1000) * 14000),
     };

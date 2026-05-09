@@ -54,16 +54,16 @@ impl Manifest {
             segment_duration_ms: 10_000,
             tracks: Tracks {
                 mic: TrackConfig {
-                    codec: "pcm_s16le_wav".to_string(),
+                    codec: "ogg_opus".to_string(),
                     sample_rate: 48_000,
                     channels: 1,
-                    bitrate: 768_000,
+                    bitrate: 48_000,
                 },
                 system: TrackConfig {
-                    codec: "pcm_s16le_wav".to_string(),
+                    codec: "ogg_opus".to_string(),
                     sample_rate: 48_000,
                     channels: 2,
-                    bitrate: 1_536_000,
+                    bitrate: 96_000,
                 },
             },
             segments: Vec::new(),

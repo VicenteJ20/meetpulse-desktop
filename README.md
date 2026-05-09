@@ -22,9 +22,9 @@ Esta base implementa el control plane completo del MVP:
 - `manifest.json` por grabacion
 - segmentos resilientes con escritura temporal y rename atomico
 - recovery de sesiones interrumpidas
-- finalizacion local valida en modo dev con `final/mic.wav`, `final/system.wav` y `final/mixed.wav`
+- finalizacion local valida con originales Ogg Opus en `final/mic.opus` y `final/system.opus`
 
-Por defecto usa la feature `mock-audio` para validar el flujo completo sin depender aun de permisos/dispositivos de audio. En este modo se generan WAV reproducibles. La integracion nativa real debe conectarse bajo `native-audio` para capturar audio real y codificar Opus.
+El flujo real vive en Rust: `native-audio` captura microfono y audio del escritorio con WASAPI, codifica Opus y deja Tauri/React solo como UI.
 
 ## Requisitos de desarrollo
 
@@ -92,10 +92,10 @@ npm run tauri:build
 Activar captura nativa cuando los workers esten implementados:
 
 ```bash
-cargo run --manifest-path src-tauri/Cargo.toml --no-default-features --features native-audio
+cargo run --manifest-path src-tauri/Cargo.toml --features native-audio
 ```
 
-Nota: `native-audio` activa dependencias como CPAL, WASAPI y Opus. En Windows, `opus` puede requerir CMake porque compila `audiopus_sys`. El modo default `mock-audio` no compila esas dependencias.
+Nota: `native-audio` activa dependencias como CPAL, WASAPI y Opus. En Windows, `opus` puede requerir CMake porque compila `audiopus_sys`. Usa `.\dev.ps1 -MockAudio` para desarrollo de UI sin dependencias nativas.
 
 ## Estructura
 

@@ -1,5 +1,6 @@
 param(
-  [string]$CargoTargetDir = ""
+  [string]$CargoTargetDir = "",
+  [switch]$MockAudio
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,6 +30,17 @@ Assert-Command "npm" "Install Node.js 20+ from https://nodejs.org/; npm is bundl
 Assert-Command "cargo" "Install Rust from https://rustup.rs/"
 Assert-Command "rustc" "Install Rust from https://rustup.rs/"
 
+if (-not $MockAudio) {
+  $cmakeBin = "C:\Program Files\CMake\bin"
+  if ((-not (Get-Command "cmake" -ErrorAction SilentlyContinue)) -and (Test-Path (Join-Path $cmakeBin "cmake.exe"))) {
+    $env:PATH = "$cmakeBin;$env:PATH"
+  }
+  Assert-Command "cmake" "Install CMake from https://cmake.org/download/ and add it to PATH."
+  if (-not $env:CMAKE_POLICY_VERSION_MINIMUM) {
+    $env:CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+  }
+}
+
 if (-not (Test-Path "node_modules")) {
   Write-Host ""
   Write-Host "Installing frontend dependencies..." -ForegroundColor Cyan
@@ -56,17 +68,27 @@ New-Item -ItemType Directory -Force -Path $env:CARGO_TARGET_DIR | Out-Null
 Write-Host ""
 Write-Host "Cargo target dir: $env:CARGO_TARGET_DIR" -ForegroundColor DarkGray
 Write-Host "Rust log level: $env:RUST_LOG" -ForegroundColor DarkGray
+if ($MockAudio) {
+  Write-Host "Audio mode: mock-audio (development fallback)" -ForegroundColor DarkGray
+} else {
+  Write-Host "Audio mode: native-audio (WASAPI + Opus in Rust)" -ForegroundColor DarkGray
+  Write-Host "CMake policy minimum: $env:CMAKE_POLICY_VERSION_MINIMUM" -ForegroundColor DarkGray
+}
 Write-Host "If Windows Application Control still blocks Rust build scripts, use WSL or allow this folder in your security policy." -ForegroundColor DarkGray
 
 Write-Host ""
 Write-Host "Starting Tauri development app..." -ForegroundColor Cyan
-npm run tauri:dev
+if ($MockAudio) {
+  npm run tauri:dev -- --features mock-audio
+} else {
+  npm run tauri:dev -- --features native-audio
+}
 
 if ($LASTEXITCODE -ne 0) {
   Write-Host ""
   Write-Host "Development runner failed with exit code $LASTEXITCODE." -ForegroundColor Red
   Write-Host "If the error says os error 4551, Windows Application Control blocked a Cargo-generated build script." -ForegroundColor Yellow
-  Write-Host "If the error says cmake was not found, install CMake or keep using the default mock-audio feature." -ForegroundColor Yellow
+  Write-Host "If the error says cmake was not found, install CMake or run .\dev.ps1 -MockAudio for UI-only development." -ForegroundColor Yellow
   Write-Host "Current Cargo target folder:" -ForegroundColor Yellow
   Write-Host "  $env:CARGO_TARGET_DIR" -ForegroundColor Yellow
   Write-Host ""

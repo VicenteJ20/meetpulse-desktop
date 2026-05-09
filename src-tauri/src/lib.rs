@@ -3,11 +3,11 @@ mod audio;
 mod commands;
 mod finalizer;
 mod manifest;
+mod native_audio;
 mod paths;
 mod recorder;
 mod recovery;
 mod storage;
-mod wav_writer;
 
 use app_state::AppState;
 use tauri::Manager;

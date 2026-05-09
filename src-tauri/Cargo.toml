@@ -39,6 +39,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
 wasapi = { version = "0.15", optional = true }
 
 [features]
-default = ["mock-audio"]
+default = []
 mock-audio = []
 native-audio = ["dep:cpal", "dep:opus", "dep:wasapi"]

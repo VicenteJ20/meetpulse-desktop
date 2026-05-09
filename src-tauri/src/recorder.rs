@@ -2,10 +2,11 @@ use std::{
     fs::{self, File},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc, Mutex as StdMutex,
     },
     thread,
+    thread::JoinHandle,
     time::{Duration, Instant},
 };
 
@@ -20,9 +21,9 @@ use crate::{
     audio::TrackHealth,
     finalizer::FinalAudioBuilder,
     manifest::{Manifest, SegmentManifest},
+    native_audio::{f32_from_bits, f32_to_bits, record_segment_to_opus},
     paths::{ensure_recording_tree, AppPaths},
     storage::Storage,
-    wav_writer::write_silence_wav,
 };
 
 const SEGMENT_DURATION: Duration = Duration::from_secs(10);
@@ -53,8 +54,9 @@ struct ActiveRecording {
     paused_total: Duration,
     paused_since: Option<Instant>,
     status: String,
-    next_segment_index: u32,
     disk_bytes: u64,
+    mic_rms: Arc<AtomicU32>,
+    system_rms: Arc<AtomicU32>,
     last_error: Option<String>,
 }
 
@@ -70,7 +72,7 @@ impl ActiveRecording {
 
         let mic_health = match self.status.as_str() {
             "paused" => TrackHealth::paused(),
-            "recording" => TrackHealth::recording(0.24),
+            "recording" => TrackHealth::recording(f32_from_bits(self.mic_rms.load(Ordering::Relaxed))),
             "stopping" => TrackHealth::ready("Cerrando"),
             _ => TrackHealth::ready("Listo"),
         };
@@ -78,13 +80,13 @@ impl ActiveRecording {
         let system_health = match self.status.as_str() {
             "paused" => TrackHealth::paused(),
             "recording" => TrackHealth {
-                status: "silent".to_string(),
-                rms: 0.0,
+                status: "recording".to_string(),
+                rms: f32_from_bits(self.system_rms.load(Ordering::Relaxed)),
                 clipping: false,
-                message: Some("WASAPI pendiente".to_string()),
+                message: Some("WASAPI loopback".to_string()),
             },
             "stopping" => TrackHealth::ready("Cerrando"),
-            _ => TrackHealth::ready("WASAPI pendiente"),
+            _ => TrackHealth::ready("Loopback de escritorio"),
         };
 
         RecorderSnapshot {
@@ -107,6 +109,7 @@ pub struct RecorderManager {
     storage: Arc<Storage>,
     active: Option<Arc<StdMutex<ActiveRecording>>>,
     stop_flag: Arc<AtomicBool>,
+    workers: Vec<JoinHandle<()>>,
 }
 
 impl RecorderManager {
@@ -117,6 +120,7 @@ impl RecorderManager {
             storage,
             active: None,
             stop_flag: Arc::new(AtomicBool::new(false)),
+            workers: Vec::new(),
         }
     }
 
@@ -163,12 +167,14 @@ impl RecorderManager {
             paused_total: Duration::ZERO,
             paused_since: None,
             status: "recording".to_string(),
-            next_segment_index: 1,
             disk_bytes: 0,
+            mic_rms: Arc::new(AtomicU32::new(f32_to_bits(0.02))),
+            system_rms: Arc::new(AtomicU32::new(f32_to_bits(0.02))),
             last_error: None,
         }));
 
-        self.spawn_segment_worker(active.clone());
+        self.workers.push(self.spawn_track_worker(active.clone(), "mic"));
+        self.workers.push(self.spawn_track_worker(active.clone(), "system"));
         self.active = Some(active);
         let snapshot = self.snapshot();
         self.emit_snapshot(&snapshot);
@@ -215,13 +221,11 @@ impl RecorderManager {
             self.emit_snapshot(&session.snapshot());
         }
 
-        thread::sleep(Duration::from_millis(250));
-
-        let mut session = active.lock().expect("active recorder mutex poisoned");
-        if session.status == "recording" || session.status == "stopping" {
-            write_track_pair(&mut session)?;
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
         }
 
+        let mut session = active.lock().expect("active recorder mutex poisoned");
         session.status = "completed".to_string();
         session.manifest.status = "completed".to_string();
         session.manifest.completed_at = Some(Utc::now());
@@ -250,52 +254,93 @@ impl RecorderManager {
         self.active.clone().context("no hay una grabacion activa")
     }
 
-    fn spawn_segment_worker(&self, active: Arc<StdMutex<ActiveRecording>>) {
+    fn spawn_track_worker(&self, active: Arc<StdMutex<ActiveRecording>>, track: &'static str) -> JoinHandle<()> {
         let storage = self.storage.clone();
         let app = self.app.clone();
         let stop_flag = self.stop_flag.clone();
 
-        thread::spawn(move || loop {
-            thread::sleep(SEGMENT_DURATION);
-            if stop_flag.load(Ordering::SeqCst) {
-                break;
-            }
-
-            let result = {
-                let mut session = active.lock().expect("active recorder mutex poisoned");
-                if session.status != "recording" {
-                    Ok(None)
-                } else {
-                    write_track_pair(&mut session).map(|_| Some(session.snapshot()))
-                }
-            };
-
-            match result {
-                Ok(Some(snapshot)) => {
-                    if let Some(recording_id) = snapshot.recording_id.as_deref() {
-                        if let Ok(session) = active.lock() {
-                            for segment in session.manifest.segments.iter().rev().take(2) {
-                                let _ = storage.insert_segment(recording_id, segment);
-                            }
+        thread::spawn(move || {
+            let mut index = 1_u32;
+            let snapshot_active = active.clone();
+            let snapshot_app = app.clone();
+            let snapshot_stop = stop_flag.clone();
+            let snapshot_thread = thread::spawn(move || {
+                while !snapshot_stop.load(Ordering::SeqCst) {
+                    thread::sleep(Duration::from_millis(180));
+                    if let Ok(session) = snapshot_active.lock() {
+                        if session.status == "recording" {
+                            let _ = snapshot_app.emit(
+                                "recorder://snapshot",
+                                RecorderEvent {
+                                    snapshot: session.snapshot(),
+                                },
+                            );
                         }
                     }
-                    let _ = app.emit("recorder://snapshot", RecorderEvent { snapshot });
-                    let _ = app.emit("recorder://recordings-changed", ());
                 }
-                Ok(None) => {}
-                Err(error) => {
-                    if let Ok(mut session) = active.lock() {
-                        session.last_error = Some(error.to_string());
-                        let _ = app.emit(
-                            "recorder://snapshot",
-                            RecorderEvent {
-                                snapshot: session.snapshot(),
-                            },
-                        );
+            });
+
+            loop {
+                if stop_flag.load(Ordering::SeqCst) {
+                    break;
+                }
+
+                let (recording_dir, recording_id, should_record, rms_meter) = {
+                    let session = active.lock().expect("active recorder mutex poisoned");
+                    (
+                        session.dir.clone(),
+                        session.id.clone(),
+                        session.status == "recording",
+                        if track == "mic" {
+                            session.mic_rms.clone()
+                        } else {
+                            session.system_rms.clone()
+                        },
+                    )
+                };
+
+                if !should_record {
+                    thread::sleep(Duration::from_millis(100));
+                    continue;
+                }
+
+                let result = write_native_segment(&recording_dir, track, index, stop_flag.clone(), rms_meter).and_then(|segment| {
+                    let mut session = active.lock().expect("active recorder mutex poisoned");
+                    if session.status == "recording" || session.status == "stopping" {
+                        session.disk_bytes += segment.size_bytes;
+                        session.manifest.segments.push(segment.clone());
+                        session.manifest.save_atomic(&session.dir)?;
+                        storage.insert_segment(&recording_id, &segment)?;
+                        Ok(Some(session.snapshot()))
+                    } else {
+                        Ok(None)
+                    }
+                });
+
+                match result {
+                    Ok(Some(snapshot)) => {
+                        let _ = app.emit("recorder://snapshot", RecorderEvent { snapshot });
+                        let _ = app.emit("recorder://recordings-changed", ());
+                        index += 1;
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        if let Ok(mut session) = active.lock() {
+                            session.last_error = Some(error.to_string());
+                            let _ = app.emit(
+                                "recorder://snapshot",
+                                RecorderEvent {
+                                    snapshot: session.snapshot(),
+                                },
+                            );
+                        }
+                        thread::sleep(Duration::from_millis(500));
                     }
                 }
             }
-        });
+
+            let _ = snapshot_thread.join();
+        })
     }
 
     fn emit_snapshot(&self, snapshot: &RecorderSnapshot) {
@@ -308,32 +353,24 @@ impl RecorderManager {
     }
 }
 
-fn write_track_pair(session: &mut ActiveRecording) -> anyhow::Result<()> {
-    let index = session.next_segment_index;
-    let mic = write_segment(&session.dir, "mic", index, 1)?;
-    let system = write_segment(&session.dir, "system", index, 2)?;
-
-    session.disk_bytes += mic.size_bytes + system.size_bytes;
-    session.manifest.segments.push(mic);
-    session.manifest.segments.push(system);
-    session.manifest.save_atomic(&session.dir)?;
-    session.next_segment_index += 1;
-    Ok(())
-}
-
-fn write_segment(
+fn write_native_segment(
     recording_dir: &std::path::Path,
     track: &str,
     index: u32,
-    channels: u16,
+    stop_flag: Arc<AtomicBool>,
+    rms_meter: Arc<AtomicU32>,
 ) -> anyhow::Result<SegmentManifest> {
-    let file_name = format!("{index:06}.wav");
+    if track != "mic" && track != "system" {
+        bail!("track desconocido: {track}");
+    }
+
+    let file_name = format!("{index:06}.opus");
     let relative_path = format!("{track}/{file_name}");
     let final_path = recording_dir.join(&relative_path);
-    let tmp_path = final_path.with_extension("wav.tmp");
+    let tmp_path = final_path.with_extension("opus.tmp");
 
-    write_silence_wav(&tmp_path, 48_000, channels, SEGMENT_DURATION.as_millis() as u64)
-        .with_context(|| format!("creating {}", tmp_path.display()))?;
+    record_segment_to_opus(track, &tmp_path, SEGMENT_DURATION, stop_flag, rms_meter)
+        .with_context(|| format!("capturing native {track} to {}", tmp_path.display()))?;
     fs::rename(&tmp_path, &final_path)
         .with_context(|| format!("committing {} to {}", tmp_path.display(), final_path.display()))?;
 

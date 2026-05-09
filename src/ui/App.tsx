@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useState } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { History, Maximize2, Mic, Minus, MonitorSpeaker, Pause, Play, Square, X } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
@@ -43,8 +43,7 @@ export function App() {
   const micLevel = micAvailable ? liveMicLevel : (snapshot?.mic.rms ?? 0);
   const systemLevel = snapshot?.system.status === "recording" ? (snapshot?.system.rms ?? 0) : 0;
   const visibleMicBars = micAvailable ? micBars : createMeterBars(micLevel);
-  const fallbackSystemBars = useMemo(() => createMeterBars(systemLevel), [systemLevel]);
-  const visibleSystemBars = fallbackSystemBars;
+  const visibleSystemBars = createMeterBars(systemLevel);
   const currentRecordingName = snapshot?.recording_id ? snapshot.recording_id.replace("rec_", "") : "sin archivo";
 
   function handlePrimary() {
@@ -61,14 +60,18 @@ export function App() {
     void start();
   }
 
+  function handleDragRegionMouseDown(event: MouseEvent<HTMLElement>) {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, textarea, select")) return;
+    void startWindowDrag();
+  }
+
   return (
-    <main className="widget-shell">
+    <main className="widget-shell" onMouseDown={handleDragRegionMouseDown}>
       <header
         className="windows-titlebar"
         data-tauri-drag-region
-        onMouseDown={(event) => {
-          if (event.button === 0) void startWindowDrag();
-        }}
       >
         <div className="window-brand" data-tauri-drag-region>
           <span className="window-icon" />
