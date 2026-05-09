@@ -205,9 +205,19 @@ fn copy_atomic(source: &Path, destination: &Path) -> anyhow::Result<()> {
     if tmp.exists() {
         let _ = fs::remove_file(&tmp);
     }
-    fs::copy(source, &tmp).with_context(|| format!("copying {} to {}", source.display(), tmp.display()))?;
-    fs::File::open(&tmp)?.sync_all()?;
-    fs::rename(&tmp, destination)
-        .with_context(|| format!("committing {} to {}", tmp.display(), destination.display()))?;
-    Ok(())
+    let result = (|| {
+        fs::copy(source, &tmp).with_context(|| format!("copying {} to {}", source.display(), tmp.display()))?;
+        let file = fs::File::open(&tmp)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&tmp, destination)
+            .with_context(|| format!("committing {} to {}", tmp.display(), destination.display()))?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+
+    result
 }

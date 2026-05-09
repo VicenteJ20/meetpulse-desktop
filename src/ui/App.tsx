@@ -112,11 +112,6 @@ export function App() {
     }
   }
 
-  useEffect(() => {
-    if (!isCompleted || !snapshot?.recording_id || savedPath || saveError || saving) return;
-    void handleSave(true);
-  }, [isCompleted, snapshot?.recording_id, savedPath, saveError, saving]);
-
   return (
     <main className={clsx("widget-shell", compactMode && "is-compact")}>
       {!compactMode && (
@@ -257,9 +252,9 @@ export function App() {
         {isCompleted && (
           <section className="save-panel">
             <div className="save-panel-head">
-              <span>{savedPath ? "Guardado en borradores" : "Audio listo"}</span>
+              <span>{savedPath ? "Audio guardado" : "Elige donde guardar"}</span>
               <button type="button" onClick={() => void handleSave(true)} disabled={saving}>
-                Borradores
+                Guardar en borradores
               </button>
             </div>
             <div className="save-fields">
