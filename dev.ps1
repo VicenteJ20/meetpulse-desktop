@@ -87,13 +87,16 @@ if ($MockAudio) {
 if ($LASTEXITCODE -ne 0) {
   Write-Host ""
   Write-Host "Development runner failed with exit code $LASTEXITCODE." -ForegroundColor Red
-  Write-Host "If the error says os error 4551, Windows Application Control blocked a Cargo-generated build script." -ForegroundColor Yellow
+  Write-Host "If the error says os error 4551, Windows Application Control blocked a Cargo-generated executable." -ForegroundColor Yellow
+  Write-Host "When the blocked path ends in build-script-build, WDAC blocked a Rust build script." -ForegroundColor Yellow
+  Write-Host "When the blocked path ends in meetings-assistant-recorder.exe, WDAC blocked the finished Tauri app." -ForegroundColor Yellow
   Write-Host "If the error says cmake was not found, install CMake or run .\dev.ps1 -MockAudio for UI-only development." -ForegroundColor Yellow
   Write-Host "Current Cargo target folder:" -ForegroundColor Yellow
   Write-Host "  $env:CARGO_TARGET_DIR" -ForegroundColor Yellow
   Write-Host ""
-  Write-Host "Example:" -ForegroundColor Yellow
-  Write-Host '  $env:CARGO_TARGET_DIR="C:\tmp\meetings-recorder-cargo-target"' -ForegroundColor Yellow
-  Write-Host "  .\dev.ps1" -ForegroundColor Yellow
+  Write-Host "Fast UI fallback:" -ForegroundColor Yellow
+  Write-Host "  .\dev-web.ps1" -ForegroundColor Yellow
+  Write-Host ""
+  Write-Host "Native/Tauri development requires your Windows Application Control policy to allow this Cargo target folder or the generated app binary." -ForegroundColor Yellow
   exit $LASTEXITCODE
 }

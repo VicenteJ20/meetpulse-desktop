@@ -13,12 +13,7 @@ export async function minimizeWindow() {
 
 export async function closeWindow() {
   if (!isTauriRuntime) return;
-  const appWindow = getCurrentWindow();
-  if (appWindow.label === "main") {
-    await appWindow.hide();
-    return;
-  }
-  await appWindow.close();
+  await getCurrentWindow().hide();
 }
 
 export async function startWindowDrag() {
@@ -66,7 +61,8 @@ export async function applyWindowMode(compact: boolean) {
   const monitorX = monitor.position.x / scale;
   const monitorY = monitor.position.y / scale;
   const monitorWidth = monitor.size.width / scale;
-  const x = Math.round(monitorX + (monitorWidth - size.width) / 2);
-  const y = Math.round(monitorY + 14);
+  const monitorHeight = monitor.size.height / scale;
+  const x = Math.round(monitorX + monitorWidth - size.width - 18);
+  const y = Math.round(monitorY + monitorHeight - size.height - 78);
   await appWindow.setPosition(new LogicalPosition(x, y));
 }

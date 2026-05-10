@@ -24,7 +24,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-log = "2"
@@ -37,6 +37,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 [target.'cfg(windows)'.dependencies]
 wasapi = { version = "0.15", optional = true }
+windows = { version = "0.61.3", features = ["Data_Xml_Dom", "UI_Notifications"] }
 
 [features]
 default = []

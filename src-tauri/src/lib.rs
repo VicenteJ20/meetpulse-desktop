@@ -4,13 +4,15 @@ mod commands;
 mod finalizer;
 mod manifest;
 mod native_audio;
+mod notifications;
 mod paths;
 mod recorder;
 mod recovery;
 mod storage;
+mod tray;
 
 use app_state::AppState;
-use tauri::Manager;
+use tauri::{Manager, RunEvent, WindowEvent};
 
 pub fn run() {
     tauri::Builder::default()
@@ -22,6 +24,7 @@ pub fn run() {
         .setup(|app| {
             let state = AppState::initialize(app.handle().clone())?;
             app.manage(state);
+            tray::setup(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -39,6 +42,17 @@ pub fn run() {
             commands::select_audio_device,
             commands::select_microphone
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Meetings Assistant");
+        .build(tauri::generate_context!())
+        .expect("failed to build Meetings Assistant")
+        .run(|app, event| {
+            if let RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { api, .. },
+                ..
+            } = event
+            {
+                api.prevent_close();
+                tray::hide_window(app, &label);
+            }
+        });
 }

@@ -461,9 +461,9 @@ export function App() {
               onClick={() => void stop()}
             />
             <MiniButton
-              label="Minimizar"
+              label="Ocultar widget"
               icon={<Minus />}
-              onClick={() => void minimizeWindow()}
+              onClick={() => void closeWindow()}
             />
             <MiniButton
               label="Vista completa"
@@ -496,9 +496,6 @@ export function App() {
                   </button>
                   <button type="button" onClick={() => void stop()} disabled={isBusy || !isActive} aria-label="Finalizar" title="Finalizar">
                     <Square />
-                  </button>
-                  <button type="button" onClick={() => toggleCompactMode(true)} aria-label="Vista widget" title="Vista widget">
-                    <Minus />
                   </button>
                 </div>
               </div>
@@ -554,11 +551,6 @@ export function App() {
                   <button type="button" onClick={() => void refresh()} title="Actualizar" aria-label="Actualizar">
                     <History />
                   </button>
-                  <label className="view-switch dashboard-switch" title="Vista widget">
-                    <span>Widget</span>
-                    <input type="checkbox" checked={false} onChange={(event) => toggleCompactMode(event.currentTarget.checked)} />
-                    <span className="switch-track" />
-                  </label>
                 </div>
               </header>
 
@@ -583,7 +575,7 @@ export function App() {
                       <p>Audios</p>
                       <h2>{filteredRows.length} resultados</h2>
                     </div>
-                    <span><SlidersHorizontal /> Clasificacion</span>
+                    <span><SlidersHorizontal /> Datos</span>
                   </div>
 
                   <div className="audio-table" role="list">
@@ -628,32 +620,56 @@ export function App() {
                         </button>
                       </div>
 
-                      <div className="details-meta">
-                        <span><Tag /> {selectedRow.recording.status}</span>
+                      <div className="details-summary">
+                        <div className="summary-item">
+                          <span><Clock3 /> Duracion</span>
+                          <strong>{formatDuration(selectedRow.recording.duration_ms)}</strong>
+                        </div>
+                        <div className="summary-item">
+                          <span><Tag /> Estado</span>
+                          <strong>{selectedRow.recording.status}</strong>
+                        </div>
                       </div>
 
-                      <div className="selected-duration">
-                        <span><Clock3 /> Duracion</span>
-                        <strong>{formatDuration(selectedRow.recording.duration_ms)}</strong>
+                      <div className="details-section">
+                        <div className="details-section-title">
+                          <span>Datos del audio</span>
+                        </div>
+                        <div className="save-fields details-fields">
+                          <label className="field-control">
+                            <span>Nombre del audio</span>
+                            <input value={saveFileName} onChange={(event) => setSaveFileName(event.currentTarget.value)} placeholder={selectedRow.displayName} disabled={saving} />
+                          </label>
+                          <label className="field-control">
+                            <span>Cliente</span>
+                            <input value={saveClient} onChange={(event) => setSaveClient(event.currentTarget.value)} placeholder="Sin cliente" disabled={saving} />
+                          </label>
+                          <label className="field-control">
+                            <span>Proyecto</span>
+                            <input value={saveProject} onChange={(event) => setSaveProject(event.currentTarget.value)} placeholder="Sin proyecto" disabled={saving} />
+                          </label>
+                          <label className="field-control">
+                            <span>Notas internas</span>
+                            <textarea value={saveNotes} onChange={(event) => setSaveNotes(event.currentTarget.value)} placeholder="Notas internas" disabled={saving} />
+                          </label>
+                        </div>
                       </div>
 
-                      <div className="save-fields details-fields">
-                        <input value={saveClient} onChange={(event) => setSaveClient(event.currentTarget.value)} placeholder="Cliente" disabled={saving} />
-                        <input value={saveProject} onChange={(event) => setSaveProject(event.currentTarget.value)} placeholder="Proyecto" disabled={saving} />
-                        <input value={saveFileName} onChange={(event) => setSaveFileName(event.currentTarget.value)} placeholder={selectedRow.displayName} disabled={saving} />
-                        <textarea value={saveNotes} onChange={(event) => setSaveNotes(event.currentTarget.value)} placeholder="Notas internas" disabled={saving} />
-                      </div>
-
-                      <div className="state-picker">
-                        <button type="button" className={clsx(draftState === "unclassified" && "is-selected")} onClick={() => handleDraftStateChange("unclassified")}>
-                          <ClipboardList /> Pendiente
-                        </button>
-                        <button type="button" className={clsx(draftState === "draft_ready" && "is-selected")} onClick={() => handleDraftStateChange("draft_ready")}>
-                          <CheckCircle2 /> Draft ready
-                        </button>
-                        <button type="button" className={clsx(draftState === "archived" && "is-selected")} onClick={() => handleDraftStateChange("archived")}>
-                          <Archive /> Archivo
-                        </button>
+                      <div className="details-section">
+                        <div className="details-section-title">
+                          <span>Destino</span>
+                        </div>
+                        <div className="state-picker">
+                          <button type="button" className={clsx(draftState === "unclassified" && "is-selected")} onClick={() => handleDraftStateChange("unclassified")}>
+                            <ClipboardList /> Pendiente
+                          </button>
+                          <button type="button" className={clsx(draftState === "draft_ready" && "is-selected")} onClick={() => handleDraftStateChange("draft_ready")}>
+                            <CheckCircle2 /> Draft ready
+                          </button>
+                          <button type="button" className={clsx(draftState === "archived" && "is-selected")} onClick={() => handleDraftStateChange("archived")}>
+                            <Archive /> Archivo
+                          </button>
+                        </div>
                       </div>
 
                       <div className="organize-actions dashboard-actions">

@@ -501,7 +501,7 @@ button {
   outline: 0;
 }
 
-.save-fields input:last-child {
+.save-fields > input:last-child {
   grid-column: 1 / -1;
 }
 
@@ -1035,8 +1035,7 @@ button {
 .section-head,
 .details-head,
 .player-bar,
-.player-now,
-.details-meta {
+.player-now {
   display: flex;
   align-items: center;
 }
@@ -1066,7 +1065,7 @@ button {
 
 .dashboard-tools {
   display: flex;
-  min-width: 310px;
+  min-width: 260px;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -1220,7 +1219,6 @@ button {
   background:
     linear-gradient(90deg, rgba(125, 211, 252, 0.2), rgba(125, 211, 252, 0.08)),
     rgba(8, 20, 38, 0.82);
-  box-shadow: inset 4px 0 0 #7dd3fc;
 }
 
 .audio-index {
@@ -1308,11 +1306,6 @@ button {
   color: #c8c3b7;
 }
 
-.details-panel {
-  gap: 14px;
-  padding: 15px;
-}
-
 .details-head {
   justify-content: space-between;
   gap: 10px;
@@ -1324,71 +1317,95 @@ button {
   flex: 0 0 auto;
 }
 
-.details-meta {
-  flex-wrap: wrap;
+.details-panel {
+  gap: 12px;
+  padding: 15px;
+}
+
+.details-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
-.details-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 999px;
-  padding: 6px 8px;
-  color: rgba(215, 241, 255, 0.7);
-  background: rgba(8, 20, 38, 0.72);
-  font-size: 11px;
-}
-
-.selected-duration {
+.summary-item {
   display: grid;
+  min-width: 0;
   gap: 5px;
-  border: 1px solid rgba(125, 211, 252, 0.18);
+  border: 1px solid rgba(186, 230, 253, 0.14);
   border-radius: 8px;
-  padding: 12px;
-  background:
-    linear-gradient(90deg, rgba(125, 211, 252, 0.14), rgba(52, 211, 153, 0.08)),
-    rgba(8, 20, 38, 0.76);
+  padding: 10px;
+  background: rgba(5, 18, 34, 0.66);
 }
 
-.selected-duration span {
+.summary-item span,
+.details-section-title {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: rgba(186, 230, 253, 0.72);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
 }
 
-.selected-duration svg {
-  width: 14px;
-  height: 14px;
+.summary-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f8fbff;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.selected-duration strong {
-  color: #f8fbff;
+.summary-item:first-child strong {
   font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 24px;
+  font-size: 16px;
   letter-spacing: 0;
 }
 
-.details-meta svg {
+.summary-item svg {
   width: 13px;
   height: 13px;
+}
+
+.details-section {
+  display: grid;
+  gap: 8px;
+}
+
+.details-section-title {
+  justify-content: space-between;
 }
 
 .details-fields {
   grid-template-columns: 1fr;
 }
 
+.field-control {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.field-control span {
+  color: rgba(186, 230, 253, 0.68);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.details-fields .field-control {
+  grid-column: 1 / -1;
+}
+
 .details-fields textarea {
-  min-height: 96px;
+  min-height: 82px;
   resize: none;
 }
 
 .details-fields textarea,
 .details-fields input {
+  width: 100%;
   border-color: rgba(186, 230, 253, 0.16);
   color: #f8fbff;
   background: rgba(5, 18, 34, 0.76);
