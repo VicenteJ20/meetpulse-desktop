@@ -71,11 +71,6 @@ export const useRecorderStore = create<RecorderStore>((set, get) => ({
 
   async refresh() {
     const [snapshot, recordings] = await Promise.all([getRecorderSnapshot(), listRecordings()]);
-    const current = get().snapshot;
-    if (current?.status === "completed" && current.recording_id && snapshot.status === "idle") {
-      set({ recordings });
-      return;
-    }
     set({ snapshot, recordings });
   },
 

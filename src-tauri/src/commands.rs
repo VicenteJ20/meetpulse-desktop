@@ -1,6 +1,9 @@
 use std::{
     fs,
+    io::{Read, Write},
+    net::TcpStream,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use anyhow::{bail, Context};
@@ -80,6 +83,12 @@ pub struct SavedAudio {
     pub path: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct TranscriptionRequestResult {
+    pub status: u16,
+    pub body: String,
+}
+
 #[tauri::command]
 pub async fn save_recording_to_library(
     state: State<'_, AppState>,
@@ -148,6 +157,18 @@ pub async fn select_microphone(state: State<'_, AppState>, device_id: String) ->
     Ok(())
 }
 
+#[tauri::command]
+pub async fn request_transcription(
+    state: State<'_, AppState>,
+    recording_id: String,
+    endpoint: String,
+    api_key: String,
+) -> Result<TranscriptionRequestResult, String> {
+    let recording_dir = state.storage.recording_folder(&recording_id);
+    let source = recording_source_path(&state, &recording_id, &recording_dir).map_err(to_message)?;
+    send_transcription_request(&endpoint, &api_key, &source).map_err(to_message)
+}
+
 fn to_message(error: anyhow::Error) -> String {
     error.to_string()
 }
@@ -162,18 +183,17 @@ fn save_recording(
 ) -> anyhow::Result<SavedAudio> {
     let recording_dir = state.storage.recording_folder(recording_id);
     let manifest = Manifest::load(&recording_dir)?;
-    let source = recording_dir.join("final").join("mixed.opus");
-    if !source.exists() {
-        bail!("el audio final aun no esta disponible");
-    }
+    let source = recording_source_path(state, recording_id, &recording_dir)?;
 
     let music_root = music_library_root()?;
     let target_dir = if draft {
         music_root.join("drafts")
     } else {
         let client = required_folder_name(client, "cliente")?;
-        let project = required_folder_name(project, "proyecto")?;
-        music_root.join(client).join(project)
+        match sanitized_folder_name(project) {
+            Some(project) => music_root.join(client).join(project),
+            None => music_root.join(client),
+        }
     };
 
     fs::create_dir_all(&target_dir).with_context(|| format!("creating {}", target_dir.display()))?;
@@ -195,12 +215,28 @@ fn save_recording(
     })
 }
 
+fn recording_source_path(
+    state: &State<'_, AppState>,
+    recording_id: &str,
+    recording_dir: &Path,
+) -> anyhow::Result<PathBuf> {
+    if let Some(path) = state.storage.recording_final_audio_path(recording_id)? {
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
+    let mixed = recording_dir.join("final").join("mixed.opus");
+    if mixed.exists() {
+        return Ok(mixed);
+    }
+
+    bail!("no se encontro el audio final para copiarlo a la biblioteca")
+}
+
 fn music_library_root() -> anyhow::Result<PathBuf> {
     let user_dirs = UserDirs::new().context("resolving user directories")?;
-    let music = user_dirs
-        .audio_dir()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| user_dirs.home_dir().join("Music"));
+    let music = user_dirs.home_dir().join("Music");
     Ok(music.join("Meetings Assistant"))
 }
 
@@ -266,4 +302,122 @@ fn copy_atomic(source: &Path, destination: &Path) -> anyhow::Result<()> {
     }
 
     result
+}
+
+fn send_transcription_request(
+    endpoint: &str,
+    api_key: &str,
+    audio_path: &Path,
+) -> anyhow::Result<TranscriptionRequestResult> {
+    let target = parse_http_endpoint(endpoint)?;
+    let audio = fs::read(audio_path).with_context(|| format!("reading {}", audio_path.display()))?;
+    let file_name = audio_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(multipart_file_name)
+        .unwrap_or_else(|| "audio.opus".to_string());
+    let mime = match audio_path.extension().and_then(|extension| extension.to_str()) {
+        Some(extension) if extension.eq_ignore_ascii_case("mp3") => "audio/mpeg",
+        _ => "audio/ogg",
+    };
+    let boundary = format!("meetings-assistant-{}", uuid::Uuid::new_v4());
+    let mut body = Vec::new();
+    write!(
+        body,
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{file_name}\"\r\nContent-Type: {mime}\r\n\r\n"
+    )?;
+    body.extend_from_slice(&audio);
+    write!(
+        body,
+        "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"relative_path\"\r\n\r\ndrafts\r\n--{boundary}--\r\n"
+    )?;
+
+    let mut stream = TcpStream::connect((&*target.host, target.port))
+        .with_context(|| format!("connecting to {}:{}", target.host, target.port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(60)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(60)))?;
+
+    write!(
+        stream,
+        "POST {} HTTP/1.1\r\nHost: {}\r\nX-API-Key: {}\r\nContent-Type: multipart/form-data; boundary={}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        target.path,
+        target.host_header,
+        api_key,
+        boundary,
+        body.len()
+    )?;
+    stream.write_all(&body)?;
+
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response)?;
+    let response_text = String::from_utf8_lossy(&response);
+    let (head, body) = response_text
+        .split_once("\r\n\r\n")
+        .map_or((response_text.as_ref(), ""), |(head, body)| (head, body));
+    let status = head
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|status| status.parse::<u16>().ok())
+        .context("respuesta HTTP invalida del servicio de transcripcion")?;
+
+    if status != 202 {
+        bail!(
+            "el servicio respondio {status}: {}",
+            body.trim().lines().next().unwrap_or("sin detalle")
+        );
+    }
+
+    Ok(TranscriptionRequestResult {
+        status,
+        body: body.trim().to_string(),
+    })
+}
+
+fn multipart_file_name(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .map(|character| match character {
+            '"' | '\r' | '\n' => '-',
+            character => character,
+        })
+        .collect::<String>();
+
+    if sanitized.trim().is_empty() {
+        "audio.opus".to_string()
+    } else {
+        sanitized
+    }
+}
+
+struct HttpEndpoint {
+    host: String,
+    host_header: String,
+    port: u16,
+    path: String,
+}
+
+fn parse_http_endpoint(endpoint: &str) -> anyhow::Result<HttpEndpoint> {
+    let endpoint = endpoint.trim();
+    let without_scheme = endpoint
+        .strip_prefix("http://")
+        .context("solo se soportan endpoints http:// locales por ahora")?;
+    let (host_port, path) = without_scheme
+        .split_once('/')
+        .map_or((without_scheme, "/"), |(host_port, path)| (host_port, path));
+    let (host, port) = match host_port.rsplit_once(':') {
+        Some((host, port)) => (host.to_string(), port.parse::<u16>().context("puerto HTTP invalido")?),
+        None => (host_port.to_string(), 80),
+    };
+
+    if host.trim().is_empty() {
+        bail!("host HTTP invalido");
+    }
+
+    Ok(HttpEndpoint {
+        host,
+        host_header: host_port.to_string(),
+        port,
+        path: format!("/{}", path.trim_start_matches('/')),
+    })
 }

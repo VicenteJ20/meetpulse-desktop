@@ -533,6 +533,13 @@ button {
   color: #fecaca;
 }
 
+.details-save-message {
+  border: 1px solid rgba(186, 230, 253, 0.14);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: rgba(5, 18, 34, 0.74);
+}
+
 .organize-head button,
 .organize-actions button {
   display: inline-grid;
@@ -942,6 +949,41 @@ button {
   height: 16px;
 }
 
+.workspace-nav {
+  display: grid;
+  gap: 6px;
+}
+
+.workspace-nav button {
+  display: inline-flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: rgba(215, 241, 255, 0.72);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.workspace-nav button:hover,
+.workspace-nav button.is-selected {
+  border-color: rgba(186, 230, 253, 0.14);
+  color: #fff;
+  background: rgba(125, 211, 252, 0.12);
+}
+
+.workspace-nav svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
 .client-nav {
   display: flex;
   min-height: 0;
@@ -1110,6 +1152,20 @@ button {
   flex: 0 0 auto;
 }
 
+.backend-status {
+  max-width: min(360px, 42vw);
+  overflow: hidden;
+  border: 1px solid rgba(186, 230, 253, 0.14);
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: rgba(215, 241, 255, 0.72);
+  background: rgba(8, 20, 38, 0.66);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dashboard-switch {
   margin-top: 0;
   color: rgba(215, 241, 255, 0.72);
@@ -1150,6 +1206,86 @@ button {
   min-height: 0;
   grid-template-columns: minmax(0, 1fr) 330px;
   gap: 14px;
+}
+
+.settings-panel {
+  display: grid;
+  grid-row: 2 / 4;
+  min-height: 0;
+  align-content: start;
+  overflow: auto;
+  border: 1px solid rgba(186, 230, 253, 0.12);
+  border-radius: 8px;
+  background: rgba(8, 20, 38, 0.54);
+}
+
+.settings-form {
+  display: grid;
+  width: min(680px, 100%);
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.settings-form .field-control input {
+  width: 100%;
+  border: 1px solid rgba(186, 230, 253, 0.16);
+  border-radius: 7px;
+  padding: 9px 10px;
+  color: #f8fbff;
+  background: rgba(5, 18, 34, 0.76);
+  outline: 0;
+  font-size: 12px;
+}
+
+.settings-preview {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  border: 1px solid rgba(186, 230, 253, 0.12);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(5, 18, 34, 0.56);
+}
+
+.settings-preview span {
+  color: rgba(186, 230, 253, 0.68);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.settings-preview strong {
+  overflow: hidden;
+  color: #f8fbff;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-save {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(125, 211, 252, 0.52);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #071226;
+  background: #7dd3fc;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.settings-save:hover {
+  background: #bae6fd;
+}
+
+.settings-save svg {
+  width: 15px;
+  height: 15px;
 }
 
 .audio-library,
@@ -1470,6 +1606,53 @@ button {
 .dashboard-actions button.save-strong:hover:not(:disabled),
 .dashboard-actions button.draft-strong:hover:not(:disabled) {
   filter: brightness(1.08);
+}
+
+.analysis-section {
+  border-top: 1px solid rgba(186, 230, 253, 0.12);
+  padding-top: 12px;
+}
+
+.analysis-button {
+  display: inline-flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(167, 139, 250, 0.46);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #f8fbff;
+  background: rgba(88, 80, 236, 0.32);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.analysis-button:hover:not(:disabled) {
+  border-color: rgba(196, 181, 253, 0.72);
+  background: rgba(99, 102, 241, 0.46);
+}
+
+.analysis-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.analysis-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.is-spinning {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .details-empty,

@@ -40,7 +40,8 @@ pub fn run() {
             commands::get_audio_devices,
             commands::get_selected_audio_devices,
             commands::select_audio_device,
-            commands::select_microphone
+            commands::select_microphone,
+            commands::request_transcription
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Meetings Assistant")

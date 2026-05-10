@@ -59,6 +59,11 @@ export type SavedAudio = {
   path: string;
 };
 
+export type TranscriptionRequestResult = {
+  status: number;
+  body: string;
+};
+
 let mockSnapshot: RecorderSnapshot = {
   status: "idle",
   recording_id: null,
@@ -219,6 +224,22 @@ export function saveRecordingToLibrary({
     return Promise.resolve({ path });
   }
   return invoke("save_recording_to_library", { recordingId, client, project, fileName, draft });
+}
+
+export function requestTranscription({
+  recordingId,
+  endpoint,
+  apiKey,
+}: {
+  recordingId: string;
+  endpoint: string;
+  apiKey: string;
+}): Promise<TranscriptionRequestResult> {
+  if (!isTauriRuntime) {
+    return Promise.resolve({ status: 202, body: "{}" });
+  }
+
+  return invoke("request_transcription", { recordingId, endpoint, apiKey });
 }
 
 export function getAudioDevices(): Promise<AudioDevice[]> {

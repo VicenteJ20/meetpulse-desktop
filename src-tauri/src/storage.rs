@@ -139,6 +139,21 @@ impl Storage {
         Ok(())
     }
 
+    pub fn recording_final_audio_path(&self, recording_id: &str) -> anyhow::Result<Option<PathBuf>> {
+        let connection = self.connection.lock().expect("SQLite mutex poisoned");
+        let final_audio_path = connection
+            .query_row(
+                "SELECT final_audio_path FROM recordings WHERE id = ?1",
+                params![recording_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten()
+            .map(PathBuf::from);
+
+        Ok(final_audio_path)
+    }
+
     pub fn insert_segment(&self, recording_id: &str, segment: &SegmentManifest) -> anyhow::Result<()> {
         let connection = self.connection.lock().expect("SQLite mutex poisoned");
         connection.execute(

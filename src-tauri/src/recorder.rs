@@ -23,6 +23,7 @@ use crate::{
     finalizer::FinalAudioBuilder,
     manifest::{Manifest, SegmentManifest},
     native_audio::{f32_from_bits, f32_to_bits, record_segment_to_opus},
+    notifications::notify_draft_saved,
     paths::{ensure_recording_tree, AppPaths},
     storage::Storage,
 };
@@ -45,6 +46,12 @@ pub struct RecorderSnapshot {
 #[derive(Debug, Clone, Serialize)]
 struct RecorderEvent {
     snapshot: RecorderSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DraftSavedEvent {
+    recording_id: String,
+    path: String,
 }
 
 struct ActiveRecording {
@@ -110,7 +117,6 @@ pub struct RecorderManager {
     storage: Arc<Storage>,
     audio_devices: Arc<StdMutex<AudioDeviceSelection>>,
     active: Option<Arc<StdMutex<ActiveRecording>>>,
-    last_completed: Option<RecorderSnapshot>,
     stop_flag: Arc<AtomicBool>,
     workers: Vec<JoinHandle<()>>,
 }
@@ -128,7 +134,6 @@ impl RecorderManager {
             storage,
             audio_devices,
             active: None,
-            last_completed: None,
             stop_flag: Arc::new(AtomicBool::new(false)),
             workers: Vec::new(),
         }
@@ -137,10 +142,6 @@ impl RecorderManager {
     pub fn snapshot(&self) -> RecorderSnapshot {
         if let Some(active) = &self.active {
             return active.lock().expect("active recorder mutex poisoned").snapshot();
-        }
-
-        if let Some(snapshot) = &self.last_completed {
-            return snapshot.clone();
         }
 
         RecorderSnapshot {
@@ -161,7 +162,6 @@ impl RecorderManager {
             bail!("ya hay una grabacion activa");
         }
 
-        self.last_completed = None;
         self.stop_flag.store(false, Ordering::SeqCst);
 
         let id = create_recording_id();
@@ -241,36 +241,54 @@ impl RecorderManager {
             let _ = worker.join();
         }
 
-        let mut session = active.lock().expect("active recorder mutex poisoned");
-        session.status = "completed".to_string();
-        session.manifest.status = "completed".to_string();
-        session.manifest.completed_at = Some(Utc::now());
-        session.manifest.save_atomic(&session.dir)?;
-        let final_path = FinalAudioBuilder::build(&session.dir, &session.manifest)?;
-        let final_path_string = final_path.as_ref().map(|path| {
-            save_automatic_draft(path, &session.manifest.created_at)
-                .unwrap_or_else(|error| {
-                    tracing::warn!(%error, "could not save automatic draft copy");
-                    path.clone()
-                })
-                .to_string_lossy()
-                .to_string()
-        });
-        let duration_ms = session.snapshot().duration_ms;
-        self.storage.update_recording_completed(
-            &session.id,
-            "completed",
-            &Utc::now().to_rfc3339(),
-            duration_ms,
-            final_path_string.as_deref(),
-        )?;
-        let _ = fs::remove_file(session.dir.join("lock"));
+        let finalize_result = {
+            let mut session = active.lock().expect("active recorder mutex poisoned");
+            let result = (|| -> anyhow::Result<(String, String)> {
+                session.status = "completed".to_string();
+                session.manifest.status = "completed".to_string();
+                session.manifest.completed_at = Some(Utc::now());
+                session.manifest.save_atomic(&session.dir)?;
+                let final_path = FinalAudioBuilder::build(&session.dir, &session.manifest)?;
+                let final_path = final_path.context("no se pudo generar audio final para guardar en borradores")?;
+                let draft_path = save_automatic_draft(&final_path, &session.manifest.created_at)?;
+                if !draft_path.exists() {
+                    bail!("no se pudo confirmar el borrador en {}", draft_path.display());
+                }
+                let final_path_string = draft_path.to_string_lossy().to_string();
+                let duration_ms = session.snapshot().duration_ms;
+                self.storage.update_recording_completed(
+                    &session.id,
+                    "completed",
+                    &Utc::now().to_rfc3339(),
+                    duration_ms,
+                    Some(final_path_string.as_str()),
+                )?;
+                Ok((session.id.clone(), final_path_string))
+            })();
 
-        let snapshot = session.snapshot();
-        drop(session);
+            if let Err(error) = &result {
+                session.status = "error".to_string();
+                session.last_error = Some(error.to_string());
+                self.emit_snapshot(&session.snapshot());
+            }
+            let _ = fs::remove_file(session.dir.join("lock"));
+            result
+        };
+
         self.active = None;
-        self.last_completed = Some(snapshot.clone());
+        let snapshot = self.snapshot();
         self.emit_snapshot(&snapshot);
+        let (recording_id, final_path_string) = finalize_result?;
+        if let Err(error) = notify_draft_saved(Path::new(&final_path_string)) {
+            tracing::warn!(%error, "could not show native draft notification");
+        }
+        let _ = self.app.emit(
+            "recorder://draft-saved",
+            DraftSavedEvent {
+                recording_id,
+                path: final_path_string,
+            },
+        );
         let _ = self.app.emit("recorder://recordings-changed", ());
         Ok(snapshot)
     }
@@ -435,10 +453,7 @@ fn create_recording_id() -> String {
 
 fn save_automatic_draft(source: &Path, created_at: &chrono::DateTime<Utc>) -> anyhow::Result<PathBuf> {
     let user_dirs = UserDirs::new().context("resolving user directories")?;
-    let music = user_dirs
-        .audio_dir()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| user_dirs.home_dir().join("Music"));
+    let music = user_dirs.home_dir().join("Music");
     let drafts_dir = music.join("Meetings Assistant").join("drafts");
     fs::create_dir_all(&drafts_dir).with_context(|| format!("creating {}", drafts_dir.display()))?;
 

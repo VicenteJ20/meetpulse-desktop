@@ -2,16 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent, ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
-  Archive,
-  CheckCircle2,
   ChevronRight,
-  ClipboardList,
   Clock3,
   Disc3,
   ExternalLink,
   FileAudio,
   FolderOpen,
   History,
+  Loader2,
   ListMusic,
   Maximize2,
   Mic,
@@ -22,6 +20,8 @@ import {
   Play,
   Save,
   Search,
+  Settings,
+  Sparkles,
   SlidersHorizontal,
   Square,
   Tag,
@@ -37,6 +37,7 @@ import {
   isTauriRuntime,
   openExternalUrl,
   openRecordingFolder,
+  requestTranscription,
   saveRecordingToLibrary,
   selectAudioDevice,
   type AudioDevice,
@@ -60,6 +61,9 @@ const bars = [
 ];
 
 const audioMetadataStorageKey = "meetings-assistant-audio-metadata";
+const backendUrlStorageKey = "meetings-assistant-backend-url";
+const transcriptionApiKeyStorageKey = "meetings-assistant-transcription-api-key";
+const defaultBackendUrl = "http://localhost:8000";
 const unclassifiedClient = "Sin clasificar";
 const allProjects = "Todos los proyectos";
 const legacyExpandedRecorderEnabled = false;
@@ -101,6 +105,7 @@ export function App() {
   const isWidgetWindow = windowLabel === "widget";
   const [now, setNow] = useState(() => Date.now());
   const [showHistory, setShowHistory] = useState(false);
+  const [dashboardView, setDashboardView] = useState<"library" | "settings">("library");
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem("recorder-view-mode") === "compact");
   const [pinned, setPinned] = useState(() => localStorage.getItem("recorder-window-pinned") === "true");
   const [saveClient, setSaveClient] = useState("");
@@ -111,7 +116,6 @@ export function App() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [saveNotes, setSaveNotes] = useState("");
-  const [draftState, setDraftState] = useState<DraftState>("unclassified");
   const [metadataById, setMetadataById] = useState<Record<string, AudioMetadata>>(() => loadAudioMetadata());
   const [selectedClient, setSelectedClient] = useState(unclassifiedClient);
   const [selectedProject, setSelectedProject] = useState(allProjects);
@@ -121,6 +125,12 @@ export function App() {
   const [playerDurationMs, setPlayerDurationMs] = useState(0);
   const [playerPlaying, setPlayerPlaying] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
+  const [backendUrl, setBackendUrl] = useState(() => loadBackendUrl());
+  const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => localStorage.getItem(transcriptionApiKeyStorageKey) ?? "");
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [analysisSubmitting, setAnalysisSubmitting] = useState(false);
+  const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
   const [selectedInputId, setSelectedInputId] = useState("");
   const [selectedOutputId, setSelectedOutputId] = useState("");
@@ -221,6 +231,7 @@ export function App() {
         const client = metadata.client.trim() || inferred.client;
         const project = metadata.project.trim() || inferred.project;
         const title = metadata.title.trim() || displayRecordingName(recording);
+        const status = resolveAudioStatus(metadata.draftState, client);
 
         return {
           recording,
@@ -228,7 +239,7 @@ export function App() {
           displayName: title,
           client,
           project,
-          status: metadata.draftState,
+          status,
         };
       }),
     [metadataById, recordings],
@@ -260,6 +271,7 @@ export function App() {
   const activeAudioPath = activeRow ? recordingAudioPath(activeRow.recording) : "";
   const activeAudioSrc = activeAudioPath ? toPlayableAudioSrc(activeAudioPath) : "";
   const visiblePlayerDuration = playerDurationMs || activeRow?.recording.duration_ms || 0;
+  const selectedCanRequestAnalysis = selectedRow?.status === "classified" && Boolean(selectedRow && recordingAudioPath(selectedRow.recording));
 
   function handlePrimary() {
     if (isPaused) {
@@ -293,6 +305,16 @@ export function App() {
   async function handleSave(recordingId: string, draft: boolean) {
     setSaving(true);
     setSaveError(null);
+    setSavedPath(null);
+
+    const nextMetadata: AudioMetadata = {
+      client: saveClient.trim(),
+      project: saveProject.trim(),
+      title: saveFileName.trim() || selectedRow?.displayName || "",
+      notes: saveNotes.trim(),
+      draftState: draft ? "draft_saved" : "classified",
+    };
+    updateAudioMetadata(recordingId, nextMetadata);
 
     try {
       const saved = await saveRecordingToLibrary({
@@ -303,19 +325,6 @@ export function App() {
         draft,
       });
       setSavedPath(saved.path);
-      updateAudioMetadata(recordingId, {
-        client: saveClient.trim(),
-        project: saveProject.trim(),
-        title: saveFileName.trim(),
-        notes: saveNotes.trim(),
-        draftState: draft ? "draft_saved" : draftState === "unclassified" ? "classified" : draftState,
-      });
-      setSelectedRecordingId(null);
-      setSaveClient("");
-      setSaveProject("");
-      setSaveFileName("");
-      setSaveNotes("");
-      setDraftState("unclassified");
       void refresh();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
@@ -354,24 +363,12 @@ export function App() {
     setActiveAudioId(row.recording.id);
     setSaveError(null);
     setSavedPath(null);
+    setAnalysisError(null);
+    setAnalysisMessage(null);
     setSaveClient(row.client === unclassifiedClient ? "" : row.client);
     setSaveProject(row.project === allProjects ? "" : row.project);
     setSaveFileName(row.displayName);
     setSaveNotes(row.metadata.notes);
-    setDraftState(row.status);
-  }
-
-  function handleDraftStateChange(nextState: DraftState) {
-    setDraftState(nextState);
-    if (!selectedRow) return;
-
-    updateAudioMetadata(selectedRow.recording.id, {
-      client: saveClient.trim(),
-      project: saveProject.trim(),
-      title: saveFileName.trim() || selectedRow.displayName,
-      notes: saveNotes.trim(),
-      draftState: nextState,
-    });
   }
 
   async function handlePlayerPlay() {
@@ -397,6 +394,64 @@ export function App() {
     audioRef.current.currentTime = 0;
     setPlayerCurrentMs(0);
     setPlayerPlaying(false);
+  }
+
+  async function handleRequestAnalysis(row: AudioRow) {
+    const normalizedBackendUrl = normalizeBackendUrl(backendUrl);
+    const endpoint = normalizedBackendUrl ? `${normalizedBackendUrl}/transcription/` : "";
+    const apiKey = transcriptionApiKey.trim();
+    const audioPath = recordingAudioPath(row.recording);
+    const audioSrc = audioPath ? toPlayableAudioSrc(audioPath) : "";
+
+    setAnalysisError(null);
+    setAnalysisMessage(null);
+
+    if (!endpoint) {
+      setAnalysisError("Configura la URL del backend antes de solicitar el analisis.");
+      return;
+    }
+
+    if (!apiKey) {
+      setAnalysisError("Configura la API key antes de solicitar el analisis.");
+      return;
+    }
+
+    if (!audioSrc) {
+      setAnalysisError("Este audio no tiene archivo final disponible.");
+      return;
+    }
+
+    setAnalysisSubmitting(true);
+    try {
+      if (isTauriRuntime) {
+        await requestTranscription({
+          recordingId: row.recording.id,
+          endpoint,
+          apiKey,
+        });
+      } else {
+        await requestBrowserTranscription(endpoint, apiKey, audioSrc, audioPath, row.displayName);
+      }
+
+      setAnalysisMessage("Analisis solicitado. El servicio acepto el audio para procesarlo.");
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : "No se pudo solicitar el analisis.");
+    } finally {
+      setAnalysisSubmitting(false);
+    }
+  }
+
+  function handleSaveSettings() {
+    const normalizedBackendUrl = normalizeBackendUrl(backendUrl);
+    if (!normalizedBackendUrl) {
+      setSettingsMessage("Ingresa una URL http valida para el backend.");
+      return;
+    }
+
+    setBackendUrl(normalizedBackendUrl);
+    localStorage.setItem(backendUrlStorageKey, normalizedBackendUrl);
+    localStorage.setItem(transcriptionApiKeyStorageKey, transcriptionApiKey.trim());
+    setSettingsMessage("Configuracion guardada.");
   }
 
   return (
@@ -466,6 +521,12 @@ export function App() {
               onClick={() => void closeWindow()}
             />
             <MiniButton
+              label={pinned ? "Desfijar widget" : "Fijar widget"}
+              icon={<Pin />}
+              active={pinned}
+              onClick={() => setPinned((value) => !value)}
+            />
+            <MiniButton
               label="Vista completa"
               icon={<Maximize2 />}
               onClick={() => toggleCompactMode(false)}
@@ -500,26 +561,47 @@ export function App() {
                 </div>
               </div>
 
-              <nav className="client-nav" aria-label="Clientes">
-                <div className="nav-heading">
-                  <UserRound />
-                  <span>Clientes</span>
-                </div>
-                {clients.map((client) => (
-                  <button
-                    key={client.name}
-                    type="button"
-                    className={clsx("client-nav-item", selectedClient === client.name && "is-selected")}
-                    onClick={() => {
-                      setSelectedClient(client.name);
-                      setSelectedProject(allProjects);
-                    }}
-                  >
-                    <span>{client.name}</span>
-                    <strong>{client.count}</strong>
-                  </button>
-                ))}
+              <nav className="workspace-nav" aria-label="Secciones">
+                <button
+                  type="button"
+                  className={clsx(dashboardView === "library" && "is-selected")}
+                  onClick={() => setDashboardView("library")}
+                >
+                  <ListMusic />
+                  Biblioteca
+                </button>
+                <button
+                  type="button"
+                  className={clsx(dashboardView === "settings" && "is-selected")}
+                  onClick={() => setDashboardView("settings")}
+                >
+                  <Settings />
+                  Configuracion
+                </button>
               </nav>
+
+              {dashboardView === "library" && (
+                <nav className="client-nav" aria-label="Clientes">
+                  <div className="nav-heading">
+                    <UserRound />
+                    <span>Clientes</span>
+                  </div>
+                  {clients.map((client) => (
+                    <button
+                      key={client.name}
+                      type="button"
+                      className={clsx("client-nav-item", selectedClient === client.name && "is-selected")}
+                      onClick={() => {
+                        setSelectedClient(client.name);
+                        setSelectedProject(allProjects);
+                      }}
+                    >
+                      <span>{client.name}</span>
+                      <strong>{client.count}</strong>
+                    </button>
+                  ))}
+                </nav>
+              )}
 
               <a
                 className="developer-link"
@@ -540,35 +622,88 @@ export function App() {
             <div className="dashboard-main">
               <header className="dashboard-topbar" data-tauri-drag-region>
                 <div>
-                  <p>Biblioteca administrativa</p>
-                  <h1>{selectedClient}</h1>
+                  <p>{dashboardView === "settings" ? "Preferencias" : "Biblioteca administrativa"}</p>
+                  <h1>{dashboardView === "settings" ? "Configuracion" : selectedClient}</h1>
                 </div>
                 <div className="dashboard-tools">
-                  <label className="search-box" title="Buscar audio">
-                    <Search />
-                    <input value={audioQuery} onChange={(event) => setAudioQuery(event.currentTarget.value)} placeholder="Buscar audio, cliente o nota" />
-                  </label>
-                  <button type="button" onClick={() => void refresh()} title="Actualizar" aria-label="Actualizar">
-                    <History />
-                  </button>
+                  {dashboardView === "library" ? (
+                    <>
+                      <label className="search-box" title="Buscar audio">
+                        <Search />
+                        <input value={audioQuery} onChange={(event) => setAudioQuery(event.currentTarget.value)} placeholder="Buscar audio, cliente o nota" />
+                      </label>
+                      <button type="button" onClick={() => void refresh()} title="Actualizar" aria-label="Actualizar">
+                        <History />
+                      </button>
+                    </>
+                  ) : (
+                    <span className="backend-status">{normalizeBackendUrl(backendUrl) || "Sin servidor"}</span>
+                  )}
                 </div>
               </header>
 
-              <div className="project-strip" aria-label="Proyectos">
-                {projectsForSelectedClient.map((project) => (
-                  <button
-                    key={project.name}
-                    type="button"
-                    className={clsx(selectedProject === project.name && "is-selected")}
-                    onClick={() => setSelectedProject(project.name)}
-                  >
-                    <span>{project.name}</span>
-                    <strong>{project.count}</strong>
-                  </button>
-                ))}
-              </div>
+              {dashboardView === "settings" ? (
+                <section className="settings-panel">
+                  <div className="section-head">
+                    <div>
+                      <p>Servidor backend</p>
+                      <h2>Conexion de analisis</h2>
+                    </div>
+                    <span><Settings /> Sistema</span>
+                  </div>
 
-              <div className="content-grid">
+                  <div className="settings-form">
+                    <label className="field-control">
+                      <span>URL del backend</span>
+                      <input
+                        value={backendUrl}
+                        onChange={(event) => {
+                          setBackendUrl(event.currentTarget.value);
+                          setSettingsMessage(null);
+                        }}
+                        placeholder={defaultBackendUrl}
+                      />
+                    </label>
+                    <label className="field-control">
+                      <span>API key</span>
+                      <input
+                        type="password"
+                        value={transcriptionApiKey}
+                        onChange={(event) => {
+                          setTranscriptionApiKey(event.currentTarget.value);
+                          setSettingsMessage(null);
+                        }}
+                        placeholder="API key del servicio"
+                      />
+                    </label>
+                    <div className="settings-preview">
+                      <span>Endpoint de analisis</span>
+                      <strong>{normalizeBackendUrl(backendUrl) ? `${normalizeBackendUrl(backendUrl)}/transcription/` : "Sin URL valida"}</strong>
+                    </div>
+                    <button type="button" className="settings-save" onClick={handleSaveSettings}>
+                      <Save />
+                      Guardar configuracion
+                    </button>
+                    {settingsMessage && <p className="save-message details-save-message">{settingsMessage}</p>}
+                  </div>
+                </section>
+              ) : (
+                <>
+                  <div className="project-strip" aria-label="Proyectos">
+                    {projectsForSelectedClient.map((project) => (
+                      <button
+                        key={project.name}
+                        type="button"
+                        className={clsx(selectedProject === project.name && "is-selected")}
+                        onClick={() => setSelectedProject(project.name)}
+                      >
+                        <span>{project.name}</span>
+                        <strong>{project.count}</strong>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="content-grid">
                 <section className="audio-library">
                   <div className="section-head">
                     <div>
@@ -655,23 +790,6 @@ export function App() {
                         </div>
                       </div>
 
-                      <div className="details-section">
-                        <div className="details-section-title">
-                          <span>Destino</span>
-                        </div>
-                        <div className="state-picker">
-                          <button type="button" className={clsx(draftState === "unclassified" && "is-selected")} onClick={() => handleDraftStateChange("unclassified")}>
-                            <ClipboardList /> Pendiente
-                          </button>
-                          <button type="button" className={clsx(draftState === "draft_ready" && "is-selected")} onClick={() => handleDraftStateChange("draft_ready")}>
-                            <CheckCircle2 /> Draft ready
-                          </button>
-                          <button type="button" className={clsx(draftState === "archived" && "is-selected")} onClick={() => handleDraftStateChange("archived")}>
-                            <Archive /> Archivo
-                          </button>
-                        </div>
-                      </div>
-
                       <div className="organize-actions dashboard-actions">
                         <button type="button" onClick={() => void openRecordingFolder(selectedRow.recording.id)} disabled={saving}>
                           <FolderOpen />
@@ -679,7 +797,7 @@ export function App() {
                         </button>
                         <button type="button" className="save-strong" onClick={() => void handleSave(selectedRow.recording.id, false)} disabled={saving}>
                           <Save />
-                          Guardar
+                          Guardar biblioteca
                         </button>
                         <button type="button" className="draft-strong" onClick={() => void handleSave(selectedRow.recording.id, true)} disabled={saving}>
                           <ChevronRight />
@@ -687,7 +805,32 @@ export function App() {
                         </button>
                       </div>
 
-                      {(savedPath || saveError) && <p className={clsx("save-message", saveError && "is-error")}>{saveError ?? savedPath}</p>}
+                      <div className="details-section analysis-section">
+                        <div className="details-section-title">
+                          <span>Analisis</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="analysis-button"
+                          onClick={() => void handleRequestAnalysis(selectedRow)}
+                          disabled={!selectedCanRequestAnalysis || analysisSubmitting}
+                          title={selectedCanRequestAnalysis ? "Solicitar analisis" : "Clasifica el audio antes de solicitar analisis"}
+                        >
+                          {analysisSubmitting ? <Loader2 className="is-spinning" /> : <Sparkles />}
+                          {analysisSubmitting ? "Solicitando" : "Solicitar analisis"}
+                        </button>
+                        {(analysisMessage || analysisError) && (
+                          <p className={clsx("save-message details-save-message", analysisError && "is-error")}>
+                            {analysisError ?? analysisMessage}
+                          </p>
+                        )}
+                      </div>
+
+                      {(savedPath || saveError) && (
+                        <p className={clsx("save-message details-save-message", saveError && "is-error")}>
+                          {saveError ?? `Guardado en ${savedPath}`}
+                        </p>
+                      )}
                     </>
                   ) : (
                     <div className="details-empty">
@@ -696,9 +839,9 @@ export function App() {
                     </div>
                   )}
                 </aside>
-              </div>
+                  </div>
 
-              <div className="player-bar">
+                  <div className="player-bar">
                 <div className="player-now">
                   <span><Disc3 /></span>
                   <div>
@@ -759,7 +902,9 @@ export function App() {
                 ) : (
                   <div className="player-placeholder">Audio no disponible</div>
                 )}
-              </div>
+                  </div>
+                </>
+              )}
 
               {(error || snapshot?.last_error || deviceError) && <div className="widget-error dashboard-error">{error ?? snapshot?.last_error ?? deviceError}</div>}
             </div>
@@ -997,20 +1142,58 @@ function saveAudioMetadata(metadata: Record<string, AudioMetadata>) {
   localStorage.setItem(audioMetadataStorageKey, JSON.stringify(metadata));
 }
 
+function loadBackendUrl(): string {
+  const savedBackendUrl = localStorage.getItem(backendUrlStorageKey);
+  if (savedBackendUrl) return savedBackendUrl;
+
+  const legacyEndpoint = localStorage.getItem("meetings-assistant-transcription-endpoint");
+  if (!legacyEndpoint) return defaultBackendUrl;
+
+  try {
+    const url = new URL(legacyEndpoint);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return defaultBackendUrl;
+  }
+}
+
+function normalizeBackendUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:") return "";
+    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return "";
+  }
+}
+
 function inferMetadata(recording: RecordingSummary): AudioMetadata {
   const pathParts = recording.final_audio_path?.split(/[\\/]/).filter(Boolean) ?? [];
   const assistantIndex = pathParts.findIndex((part) => part.toLowerCase() === "meetings assistant");
   const client = assistantIndex >= 0 ? pathParts[assistantIndex + 1] : "";
   const project = assistantIndex >= 0 ? pathParts[assistantIndex + 2] : "";
   const isDraft = client?.toLowerCase() === "drafts";
+  const normalizedClient = isDraft ? unclassifiedClient : client || unclassifiedClient;
 
   return {
-    client: isDraft ? unclassifiedClient : client || unclassifiedClient,
+    client: normalizedClient,
     project: isDraft ? "Drafts" : project || allProjects,
     title: displayRecordingName(recording),
     notes: "",
-    draftState: isDraft ? "draft_saved" : client && project ? "classified" : "unclassified",
+    draftState: isDraft ? "draft_saved" : resolveAudioStatus("unclassified", normalizedClient),
   };
+}
+
+function resolveAudioStatus(state: DraftState, client: string): DraftState {
+  const normalizedClient = client.trim().toLowerCase();
+  if (normalizedClient && normalizedClient !== unclassifiedClient.toLowerCase() && normalizedClient !== "drafts") {
+    return state === "archived" ? "archived" : "classified";
+  }
+
+  return state;
 }
 
 function buildClientGroups(rows: AudioRow[]) {
@@ -1051,6 +1234,63 @@ function recordingAudioPath(recording: RecordingSummary): string {
   if (recording.final_audio_path) return recording.final_audio_path;
   if (!recording.folder_path) return "";
   return `${recording.folder_path.replace(/[\\/]$/, "")}\\final\\mixed.opus`;
+}
+
+function audioFileName(path: string, displayName: string): string {
+  const rawFileName = path.split(/[\\/]/).pop();
+  if (rawFileName?.match(/\.(mp3|opus)$/i)) return rawFileName;
+
+  const safeName = displayName
+    .trim()
+    .replace(/\.(mp3|opus)$/i, "")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .trim();
+
+  return `${safeName || "audio"}.opus`;
+}
+
+async function requestBrowserTranscription(
+  endpoint: string,
+  apiKey: string,
+  audioSrc: string,
+  audioPath: string,
+  displayName: string,
+) {
+  const audioResponse = await fetch(audioSrc);
+  if (!audioResponse.ok) {
+    throw new Error("No se pudo leer el archivo de audio local.");
+  }
+
+  const blob = await audioResponse.blob();
+  const fileName = audioFileName(audioPath, displayName);
+  const form = new FormData();
+  form.append("file", blob, fileName);
+  form.append("relative_path", "drafts");
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "X-API-Key": apiKey,
+    },
+    body: form,
+  });
+
+  if (response.status !== 202) {
+    throw new Error(await responseErrorMessage(response));
+  }
+}
+
+async function responseErrorMessage(response: Response): Promise<string> {
+  const fallback = `El servicio respondio ${response.status}.`;
+  try {
+    const payload = await response.json();
+    if (typeof payload?.detail === "string") return payload.detail;
+    if (typeof payload?.message === "string") return payload.message;
+    return fallback;
+  } catch {
+    const text = await response.text().catch(() => "");
+    return text.trim() || fallback;
+  }
 }
 
 function formatDateTime(value: string): string {
