@@ -12,22 +12,47 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Meetings Assistant",
-        "width": 356,
-        "height": 556,
-        "minWidth": 180,
-        "minHeight": 48,
-        "maxWidth": 560,
-        "maxHeight": 556,
-        "resizable": false,
+        "width": 1120,
+        "height": 720,
+        "minWidth": 920,
+        "minHeight": 620,
+        "maxWidth": 1440,
+        "maxHeight": 960,
+        "resizable": true,
         "decorations": false,
         "transparent": false,
         "alwaysOnTop": false,
         "skipTaskbar": false
+      },
+      {
+        "label": "widget",
+        "title": "Meetings Assistant Widget",
+        "width": 430,
+        "height": 56,
+        "minWidth": 430,
+        "minHeight": 56,
+        "maxWidth": 430,
+        "maxHeight": 56,
+        "resizable": false,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPLOCALDATA/**",
+          "$LOCALDATA/MeetingsAssistant/**",
+          "$HOME/Music/Meetings Assistant/**",
+          "$AUDIO/Meetings Assistant/**"
+        ]
+      }
     }
   },
   "bundle": {

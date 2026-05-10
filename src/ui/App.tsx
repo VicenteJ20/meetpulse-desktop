@@ -1,19 +1,56 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent, ReactNode } from "react";
-import { ExternalLink, History, Maximize2, Mic, Minus, MonitorSpeaker, Pause, Pin, Play, Square, X } from "lucide-react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import {
+  Archive,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  Clock3,
+  Disc3,
+  ExternalLink,
+  FileAudio,
+  FolderOpen,
+  History,
+  ListMusic,
+  Maximize2,
+  Mic,
+  Minus,
+  MonitorSpeaker,
+  Pause,
+  Pin,
+  Play,
+  Save,
+  Search,
+  SlidersHorizontal,
+  Square,
+  Tag,
+  UserRound,
+  X,
+} from "lucide-react";
 import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
 import {
   defaultRecordingFileName,
   getAudioDevices,
   getSelectedAudioDevices,
+  isTauriRuntime,
   openExternalUrl,
   openRecordingFolder,
   saveRecordingToLibrary,
   selectAudioDevice,
   type AudioDevice,
+  type RecordingSummary,
 } from "../tauri/commands";
-import { applyWindowMode, closeWindow, minimizeWindow, setWindowAlwaysOnTop, startWindowDrag } from "../tauri/window";
+import {
+  applyWindowMode,
+  closeWindow,
+  currentWindowLabel,
+  minimizeWindow,
+  setWindowAlwaysOnTop,
+  showWindow,
+  startWindowDrag,
+} from "../tauri/window";
 import { useRecorderStore } from "../store/recorderStore";
 
 const bars = [
@@ -22,8 +59,46 @@ const bars = [
   0.44, 0.76, 0.36, 0.58,
 ];
 
+const audioMetadataStorageKey = "meetings-assistant-audio-metadata";
+const unclassifiedClient = "Sin clasificar";
+const allProjects = "Todos los proyectos";
+const legacyExpandedRecorderEnabled = false;
+
+const emptyRecordingSummary: RecordingSummary = {
+  id: "",
+  status: "idle",
+  started_at: new Date(0).toISOString(),
+  completed_at: null,
+  duration_ms: 0,
+  folder_path: "",
+  final_audio_path: null,
+  segments: 0,
+  size_bytes: 0,
+};
+
+type DraftState = "unclassified" | "classified" | "draft_ready" | "draft_saved" | "archived";
+
+type AudioMetadata = {
+  client: string;
+  project: string;
+  title: string;
+  notes: string;
+  draftState: DraftState;
+};
+
+type AudioRow = {
+  recording: RecordingSummary;
+  metadata: AudioMetadata;
+  displayName: string;
+  client: string;
+  project: string;
+  status: DraftState;
+};
+
 export function App() {
   const { snapshot, recordings, loading, error, init, refresh, start, pause, resume, stop } = useRecorderStore();
+  const windowLabel = currentWindowLabel();
+  const isWidgetWindow = windowLabel === "widget";
   const [now, setNow] = useState(() => Date.now());
   const [showHistory, setShowHistory] = useState(false);
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem("recorder-view-mode") === "compact");
@@ -31,13 +106,26 @@ export function App() {
   const [saveClient, setSaveClient] = useState("");
   const [saveProject, setSaveProject] = useState("");
   const [saveFileName, setSaveFileName] = useState("");
+  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedPath, setSavedPath] = useState<string | null>(null);
+  const [saveNotes, setSaveNotes] = useState("");
+  const [draftState, setDraftState] = useState<DraftState>("unclassified");
+  const [metadataById, setMetadataById] = useState<Record<string, AudioMetadata>>(() => loadAudioMetadata());
+  const [selectedClient, setSelectedClient] = useState(unclassifiedClient);
+  const [selectedProject, setSelectedProject] = useState(allProjects);
+  const [audioQuery, setAudioQuery] = useState("");
+  const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
+  const [playerCurrentMs, setPlayerCurrentMs] = useState(0);
+  const [playerDurationMs, setPlayerDurationMs] = useState(0);
+  const [playerPlaying, setPlayerPlaying] = useState(false);
+  const [playerError, setPlayerError] = useState<string | null>(null);
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
   const [selectedInputId, setSelectedInputId] = useState("");
   const [selectedOutputId, setSelectedOutputId] = useState("");
   const [deviceError, setDeviceError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     void init();
@@ -78,9 +166,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("recorder-view-mode", compactMode ? "compact" : "full");
-    void applyWindowMode(compactMode);
-  }, [compactMode]);
+    if (isWidgetWindow) {
+      void applyWindowMode(true);
+      return;
+    }
+
+    if (!isTauriRuntime) {
+      localStorage.setItem("recorder-view-mode", compactMode ? "compact" : "full");
+    }
+  }, [compactMode, isWidgetWindow]);
 
   useEffect(() => {
     localStorage.setItem("recorder-window-pinned", pinned ? "true" : "false");
@@ -93,6 +187,14 @@ export function App() {
     setSaveFileName("");
   }, [snapshot?.recording_id]);
 
+  useEffect(() => {
+    setPlayerCurrentMs(0);
+    setPlayerDurationMs(0);
+    setPlayerPlaying(false);
+    setPlayerError(null);
+  }, [activeAudioId]);
+
+  const compactView = isWidgetWindow || (!isTauriRuntime && compactMode);
   const status = snapshot?.status ?? "idle";
   const durationMs = useLiveDuration(snapshot, now);
   const duration = formatWidgetDuration(durationMs);
@@ -108,13 +210,56 @@ export function App() {
   const visibleSystemBars = createMeterBars(systemLevel);
   const suggestedFileName = snapshot?.started_at ? defaultRecordingFileName(new Date(snapshot.started_at)) : defaultRecordingFileName(new Date());
   const visibleRecordingName = snapshot?.recording_id ? suggestedFileName : "sin archivo";
-  const isCompleted = status === "completed" && Boolean(snapshot?.recording_id);
+  const selectedRecording = selectedRecordingId
+    ? (recordings.find((recording) => recording.id === selectedRecordingId) ?? emptyRecordingSummary)
+    : emptyRecordingSummary;
+  const audioRows = useMemo<AudioRow[]>(
+    () =>
+      recordings.map((recording) => {
+        const inferred = inferMetadata(recording);
+        const metadata = metadataById[recording.id] ?? inferred;
+        const client = metadata.client.trim() || inferred.client;
+        const project = metadata.project.trim() || inferred.project;
+        const title = metadata.title.trim() || displayRecordingName(recording);
 
-  useEffect(() => {
-    if (isCompleted && compactMode) {
-      setCompactMode(false);
-    }
-  }, [compactMode, isCompleted]);
+        return {
+          recording,
+          metadata: { ...metadata, client, project, title },
+          displayName: title,
+          client,
+          project,
+          status: metadata.draftState,
+        };
+      }),
+    [metadataById, recordings],
+  );
+  const clients = useMemo(() => buildClientGroups(audioRows), [audioRows]);
+  const projectsForSelectedClient = useMemo(
+    () => buildProjectsForClient(audioRows, selectedClient),
+    [audioRows, selectedClient],
+  );
+  const filteredRows = useMemo(
+    () =>
+      audioRows.filter((row) => {
+        const matchesClient = selectedClient === unclassifiedClient ? row.client === unclassifiedClient : row.client === selectedClient;
+        const matchesProject = selectedProject === allProjects || row.project === selectedProject;
+        const query = audioQuery.trim().toLowerCase();
+        const matchesQuery =
+          !query ||
+          row.displayName.toLowerCase().includes(query) ||
+          row.client.toLowerCase().includes(query) ||
+          row.project.toLowerCase().includes(query) ||
+          row.metadata.notes.toLowerCase().includes(query);
+
+        return matchesClient && matchesProject && matchesQuery;
+      }),
+    [audioQuery, audioRows, selectedClient, selectedProject],
+  );
+  const selectedRow = selectedRecordingId ? audioRows.find((row) => row.recording.id === selectedRecordingId) : undefined;
+  const activeRow = activeAudioId ? audioRows.find((row) => row.recording.id === activeAudioId) : selectedRow;
+  const activeAudioPath = activeRow ? recordingAudioPath(activeRow.recording) : "";
+  const activeAudioSrc = activeAudioPath ? toPlayableAudioSrc(activeAudioPath) : "";
+  const visiblePlayerDuration = playerDurationMs || activeRow?.recording.duration_ms || 0;
 
   function handlePrimary() {
     if (isPaused) {
@@ -138,23 +283,39 @@ export function App() {
 
   function toggleCompactMode(value: boolean) {
     setShowHistory(false);
+    if (isTauriRuntime) {
+      void showWindow(value ? "widget" : "main");
+      return;
+    }
     setCompactMode(value);
   }
 
-  async function handleSave(draft: boolean) {
-    if (!snapshot?.recording_id) return;
+  async function handleSave(recordingId: string, draft: boolean) {
     setSaving(true);
     setSaveError(null);
 
     try {
       const saved = await saveRecordingToLibrary({
-        recordingId: snapshot.recording_id,
+        recordingId,
         client: saveClient,
         project: saveProject,
         fileName: saveFileName,
         draft,
       });
       setSavedPath(saved.path);
+      updateAudioMetadata(recordingId, {
+        client: saveClient.trim(),
+        project: saveProject.trim(),
+        title: saveFileName.trim(),
+        notes: saveNotes.trim(),
+        draftState: draft ? "draft_saved" : draftState === "unclassified" ? "classified" : draftState,
+      });
+      setSelectedRecordingId(null);
+      setSaveClient("");
+      setSaveProject("");
+      setSaveFileName("");
+      setSaveNotes("");
+      setDraftState("unclassified");
       void refresh();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
@@ -180,9 +341,67 @@ export function App() {
     }
   }
 
+  function updateAudioMetadata(recordingId: string, metadata: AudioMetadata) {
+    setMetadataById((current) => {
+      const next = { ...current, [recordingId]: metadata };
+      saveAudioMetadata(next);
+      return next;
+    });
+  }
+
+  function handleSelectRecording(row: AudioRow) {
+    setSelectedRecordingId(row.recording.id);
+    setActiveAudioId(row.recording.id);
+    setSaveError(null);
+    setSavedPath(null);
+    setSaveClient(row.client === unclassifiedClient ? "" : row.client);
+    setSaveProject(row.project === allProjects ? "" : row.project);
+    setSaveFileName(row.displayName);
+    setSaveNotes(row.metadata.notes);
+    setDraftState(row.status);
+  }
+
+  function handleDraftStateChange(nextState: DraftState) {
+    setDraftState(nextState);
+    if (!selectedRow) return;
+
+    updateAudioMetadata(selectedRow.recording.id, {
+      client: saveClient.trim(),
+      project: saveProject.trim(),
+      title: saveFileName.trim() || selectedRow.displayName,
+      notes: saveNotes.trim(),
+      draftState: nextState,
+    });
+  }
+
+  async function handlePlayerPlay() {
+    if (!audioRef.current || !activeAudioSrc) return;
+    setPlayerError(null);
+    try {
+      await audioRef.current.play();
+      setPlayerPlaying(true);
+    } catch (error) {
+      setPlayerPlaying(false);
+      setPlayerError(error instanceof Error ? error.message : "No se pudo reproducir el audio");
+    }
+  }
+
+  function handlePlayerPause() {
+    audioRef.current?.pause();
+    setPlayerPlaying(false);
+  }
+
+  function handlePlayerStop() {
+    if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    setPlayerCurrentMs(0);
+    setPlayerPlaying(false);
+  }
+
   return (
-    <main className={clsx("widget-shell", compactMode && "is-compact")}>
-      {!compactMode && (
+    <main className={clsx("widget-shell", compactView && "is-compact")}>
+      {!compactView && (
         <header
           className="windows-titlebar"
           data-tauri-drag-region
@@ -220,7 +439,7 @@ export function App() {
         </header>
       )}
 
-      {compactMode ? (
+      {compactView ? (
         <section className="compact-recorder" onPointerDown={handleTitlebarPointerDown}>
           <div className="compact-status">
             <SignalIcon icon={<Mic />} active={isRecording && micLevel > 0.01} color="mic" label="Microfono" />
@@ -254,7 +473,283 @@ export function App() {
           </div>
         </section>
       ) : (
+        <>
+          <section className="dashboard-shell">
+            <aside className="library-sidebar">
+              <div className="sidebar-brand" data-tauri-drag-region>
+                <span className="brand-mark"><Disc3 /></span>
+                <div>
+                  <strong>Audio Library</strong>
+                  <span>{recordings.length} audios</span>
+                </div>
+              </div>
 
+              <div className="quick-recorder">
+                <div>
+                  <p>{statusTitle(status)}</p>
+                  <span>{statusSubtitle(status)}</span>
+                </div>
+                <strong>{duration}</strong>
+                <div className="quick-controls">
+                  <button type="button" onClick={handlePrimary} disabled={isBusy} aria-label={isPaused ? "Reanudar" : isRecording ? "Pausar" : "Grabar"} title={isPaused ? "Reanudar" : isRecording ? "Pausar" : "Grabar"}>
+                    {isRecording ? <Pause /> : <Play />}
+                  </button>
+                  <button type="button" onClick={() => void stop()} disabled={isBusy || !isActive} aria-label="Finalizar" title="Finalizar">
+                    <Square />
+                  </button>
+                  <button type="button" onClick={() => toggleCompactMode(true)} aria-label="Vista widget" title="Vista widget">
+                    <Minus />
+                  </button>
+                </div>
+              </div>
+
+              <nav className="client-nav" aria-label="Clientes">
+                <div className="nav-heading">
+                  <UserRound />
+                  <span>Clientes</span>
+                </div>
+                {clients.map((client) => (
+                  <button
+                    key={client.name}
+                    type="button"
+                    className={clsx("client-nav-item", selectedClient === client.name && "is-selected")}
+                    onClick={() => {
+                      setSelectedClient(client.name);
+                      setSelectedProject(allProjects);
+                    }}
+                  >
+                    <span>{client.name}</span>
+                    <strong>{client.count}</strong>
+                  </button>
+                ))}
+              </nav>
+
+              <a
+                className="developer-link"
+                href="https://vicentejorquera.dev"
+                target="_blank"
+                rel="noreferrer"
+                title="vicentejorquera.dev"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openExternalUrl("https://vicentejorquera.dev");
+                }}
+              >
+                Vicente Jorquera
+                <ExternalLink />
+              </a>
+            </aside>
+
+            <div className="dashboard-main">
+              <header className="dashboard-topbar" data-tauri-drag-region>
+                <div>
+                  <p>Biblioteca administrativa</p>
+                  <h1>{selectedClient}</h1>
+                </div>
+                <div className="dashboard-tools">
+                  <label className="search-box" title="Buscar audio">
+                    <Search />
+                    <input value={audioQuery} onChange={(event) => setAudioQuery(event.currentTarget.value)} placeholder="Buscar audio, cliente o nota" />
+                  </label>
+                  <button type="button" onClick={() => void refresh()} title="Actualizar" aria-label="Actualizar">
+                    <History />
+                  </button>
+                  <label className="view-switch dashboard-switch" title="Vista widget">
+                    <span>Widget</span>
+                    <input type="checkbox" checked={false} onChange={(event) => toggleCompactMode(event.currentTarget.checked)} />
+                    <span className="switch-track" />
+                  </label>
+                </div>
+              </header>
+
+              <div className="project-strip" aria-label="Proyectos">
+                {projectsForSelectedClient.map((project) => (
+                  <button
+                    key={project.name}
+                    type="button"
+                    className={clsx(selectedProject === project.name && "is-selected")}
+                    onClick={() => setSelectedProject(project.name)}
+                  >
+                    <span>{project.name}</span>
+                    <strong>{project.count}</strong>
+                  </button>
+                ))}
+              </div>
+
+              <div className="content-grid">
+                <section className="audio-library">
+                  <div className="section-head">
+                    <div>
+                      <p>Audios</p>
+                      <h2>{filteredRows.length} resultados</h2>
+                    </div>
+                    <span><SlidersHorizontal /> Clasificacion</span>
+                  </div>
+
+                  <div className="audio-table" role="list">
+                    {filteredRows.length === 0 ? (
+                      <div className="empty-state">
+                        <ListMusic />
+                        <p>No hay audios para esta vista.</p>
+                      </div>
+                    ) : (
+                      filteredRows.map((row) => (
+                        <button
+                          key={row.recording.id}
+                          type="button"
+                          className={clsx("audio-row", selectedRecordingId === row.recording.id && "is-selected")}
+                          onClick={() => handleSelectRecording(row)}
+                        >
+                          <span className="audio-index"><FileAudio /></span>
+                          <span className="audio-title">
+                            <strong>{row.displayName}</strong>
+                            <small>{formatDateTime(row.recording.started_at)}</small>
+                          </span>
+                          <span className="audio-client">{row.client}</span>
+                          <span className="audio-project">{row.project}</span>
+                          <span className="audio-duration">{formatDuration(row.recording.duration_ms)}</span>
+                          <StatusBadge state={row.status} />
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <aside className="details-panel">
+                  {selectedRow ? (
+                    <>
+                      <div className="details-head">
+                        <div>
+                          <p>Audio seleccionado</p>
+                          <h2>{selectedRow.displayName}</h2>
+                        </div>
+                        <button type="button" onClick={() => setSelectedRecordingId(null)} aria-label="Cerrar detalle" title="Cerrar detalle">
+                          <X />
+                        </button>
+                      </div>
+
+                      <div className="details-meta">
+                        <span><Tag /> {selectedRow.recording.status}</span>
+                      </div>
+
+                      <div className="selected-duration">
+                        <span><Clock3 /> Duracion</span>
+                        <strong>{formatDuration(selectedRow.recording.duration_ms)}</strong>
+                      </div>
+
+                      <div className="save-fields details-fields">
+                        <input value={saveClient} onChange={(event) => setSaveClient(event.currentTarget.value)} placeholder="Cliente" disabled={saving} />
+                        <input value={saveProject} onChange={(event) => setSaveProject(event.currentTarget.value)} placeholder="Proyecto" disabled={saving} />
+                        <input value={saveFileName} onChange={(event) => setSaveFileName(event.currentTarget.value)} placeholder={selectedRow.displayName} disabled={saving} />
+                        <textarea value={saveNotes} onChange={(event) => setSaveNotes(event.currentTarget.value)} placeholder="Notas internas" disabled={saving} />
+                      </div>
+
+                      <div className="state-picker">
+                        <button type="button" className={clsx(draftState === "unclassified" && "is-selected")} onClick={() => handleDraftStateChange("unclassified")}>
+                          <ClipboardList /> Pendiente
+                        </button>
+                        <button type="button" className={clsx(draftState === "draft_ready" && "is-selected")} onClick={() => handleDraftStateChange("draft_ready")}>
+                          <CheckCircle2 /> Draft ready
+                        </button>
+                        <button type="button" className={clsx(draftState === "archived" && "is-selected")} onClick={() => handleDraftStateChange("archived")}>
+                          <Archive /> Archivo
+                        </button>
+                      </div>
+
+                      <div className="organize-actions dashboard-actions">
+                        <button type="button" onClick={() => void openRecordingFolder(selectedRow.recording.id)} disabled={saving}>
+                          <FolderOpen />
+                          Abrir
+                        </button>
+                        <button type="button" className="save-strong" onClick={() => void handleSave(selectedRow.recording.id, false)} disabled={saving}>
+                          <Save />
+                          Guardar
+                        </button>
+                        <button type="button" className="draft-strong" onClick={() => void handleSave(selectedRow.recording.id, true)} disabled={saving}>
+                          <ChevronRight />
+                          Drafts
+                        </button>
+                      </div>
+
+                      {(savedPath || saveError) && <p className={clsx("save-message", saveError && "is-error")}>{saveError ?? savedPath}</p>}
+                    </>
+                  ) : (
+                    <div className="details-empty">
+                      <FileAudio />
+                      <p>Selecciona un audio para clasificarlo, guardarlo o enviarlo a drafts.</p>
+                    </div>
+                  )}
+                </aside>
+              </div>
+
+              <div className="player-bar">
+                <div className="player-now">
+                  <span><Disc3 /></span>
+                  <div>
+                    <strong>{activeRow?.displayName ?? "Sin audio seleccionado"}</strong>
+                    <small>{activeRow ? `${activeRow.client} / ${activeRow.project}` : "El reproductor queda listo al seleccionar un audio"}</small>
+                  </div>
+                </div>
+                {activeAudioSrc ? (
+                  <div className="player-controls">
+                    <button type="button" onClick={() => void handlePlayerPlay()} disabled={!activeAudioSrc || playerPlaying} aria-label="Reproducir" title="Reproducir">
+                      <Play />
+                    </button>
+                    <button type="button" onClick={handlePlayerPause} disabled={!activeAudioSrc || !playerPlaying} aria-label="Pausar" title="Pausar">
+                      <Pause />
+                    </button>
+                    <button type="button" onClick={handlePlayerStop} disabled={!activeAudioSrc} aria-label="Detener" title="Detener">
+                      <Square />
+                    </button>
+                    <div className="player-progress" aria-label="Progreso">
+                      <span>{formatDuration(playerCurrentMs)}</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(visiblePlayerDuration, 1)}
+                        value={Math.min(playerCurrentMs, Math.max(visiblePlayerDuration, 1))}
+                        disabled={!activeAudioSrc}
+                        onChange={(event) => {
+                          const nextMs = Number(event.currentTarget.value);
+                          setPlayerCurrentMs(nextMs);
+                          if (audioRef.current) {
+                            audioRef.current.currentTime = nextMs / 1000;
+                          }
+                        }}
+                        aria-label="Adelantar o retroceder audio"
+                      />
+                      <span>{formatDuration(visiblePlayerDuration)}</span>
+                    </div>
+                    <audio
+                      ref={audioRef}
+                      key={activeAudioSrc}
+                      preload="metadata"
+                      src={activeAudioSrc}
+                      onLoadedMetadata={(event) => {
+                        const seconds = event.currentTarget.duration;
+                        setPlayerDurationMs(Number.isFinite(seconds) ? Math.round(seconds * 1000) : 0);
+                      }}
+                      onTimeUpdate={(event) => setPlayerCurrentMs(Math.round(event.currentTarget.currentTime * 1000))}
+                      onPause={() => setPlayerPlaying(false)}
+                      onPlay={() => setPlayerPlaying(true)}
+                      onEnded={handlePlayerStop}
+                      onError={() => {
+                        setPlayerPlaying(false);
+                        setPlayerError("No se pudo cargar el archivo de audio");
+                      }}
+                    />
+                    {playerError && <span className="player-error">{playerError}</span>}
+                  </div>
+                ) : (
+                  <div className="player-placeholder">Audio no disponible</div>
+                )}
+              </div>
+
+              {(error || snapshot?.last_error || deviceError) && <div className="widget-error dashboard-error">{error ?? snapshot?.last_error ?? deviceError}</div>}
+            </div>
+          </section>
+
+          {legacyExpandedRecorderEnabled && (
       <section className="recorder-card">
         <header className="recorder-header" data-tauri-drag-region>
           <div data-tauri-drag-region>
@@ -345,41 +840,6 @@ export function App() {
           />
         </div>
 
-        {isCompleted && (
-          <section className="save-panel">
-            <div className="save-panel-head">
-              <span>{savedPath ? "Audio guardado" : "Elige donde guardar"}</span>
-              <button type="button" onClick={() => void handleSave(true)} disabled={saving}>
-                Guardar en borradores
-              </button>
-            </div>
-            <div className="save-fields">
-              <input
-                value={saveClient}
-                onChange={(event) => setSaveClient(event.currentTarget.value)}
-                placeholder="Cliente"
-                disabled={saving}
-              />
-              <input
-                value={saveProject}
-                onChange={(event) => setSaveProject(event.currentTarget.value)}
-                placeholder="Proyecto"
-                disabled={saving}
-              />
-              <input
-                value={saveFileName}
-                onChange={(event) => setSaveFileName(event.currentTarget.value)}
-                placeholder={suggestedFileName}
-                disabled={saving}
-              />
-            </div>
-            <button className="save-primary" type="button" onClick={() => void handleSave(false)} disabled={saving}>
-              Guardar organizado
-            </button>
-            {(savedPath || saveError) && <p className={clsx("save-message", saveError && "is-error")}>{saveError ?? savedPath}</p>}
-          </section>
-        )}
-
         <footer className="widget-footer">
           <a
             className="timeline-label"
@@ -425,8 +885,13 @@ export function App() {
                   <button
                     key={recording.id}
                     type="button"
-                    className="history-item"
-                    onClick={() => void openRecordingFolder(recording.id)}
+                    className={clsx("history-item", selectedRecordingId === recording.id && "is-selected")}
+                    onClick={() => {
+                      setSelectedRecordingId(recording.id);
+                      setSaveError(null);
+                      setSavedPath(null);
+                      setSaveFileName(displayRecordingName(recording));
+                    }}
                   >
                     <span className="history-name">{displayRecordingName(recording)}</span>
                     <span className="history-meta">
@@ -436,14 +901,151 @@ export function App() {
                 ))
               )}
             </div>
+            {selectedRecording && (
+              <div className="organize-panel">
+                <div className="organize-head">
+                  <span>Organizar audio</span>
+                  <button type="button" onClick={() => setSelectedRecordingId(null)} aria-label="Cerrar organizador">
+                    <X />
+                  </button>
+                </div>
+                <div className="save-fields">
+                  <input
+                    value={saveClient}
+                    onChange={(event) => setSaveClient(event.currentTarget.value)}
+                    placeholder="Cliente"
+                    disabled={saving}
+                  />
+                  <input
+                    value={saveProject}
+                    onChange={(event) => setSaveProject(event.currentTarget.value)}
+                    placeholder="Proyecto"
+                    disabled={saving}
+                  />
+                  <input
+                    value={saveFileName}
+                    onChange={(event) => setSaveFileName(event.currentTarget.value)}
+                    placeholder={displayRecordingName(selectedRecording)}
+                    disabled={saving}
+                  />
+                </div>
+                <div className="organize-actions">
+                  <button type="button" onClick={() => void openRecordingFolder(selectedRecording.id)} disabled={saving}>
+                    <FolderOpen />
+                    Abrir
+                  </button>
+                  <button type="button" onClick={() => void handleSave(selectedRecording.id, false)} disabled={saving}>
+                    <Save />
+                    Guardar organizado
+                  </button>
+                </div>
+                {(savedPath || saveError) && <p className={clsx("save-message", saveError && "is-error")}>{saveError ?? savedPath}</p>}
+              </div>
+            )}
           </section>
         )}
 
         {(error || snapshot?.last_error || deviceError) && <div className="widget-error">{error ?? snapshot?.last_error ?? deviceError}</div>}
       </section>
+          )}
+        </>
       )}
     </main>
   );
+}
+
+function StatusBadge({ state }: { state: DraftState }) {
+  const label = {
+    unclassified: "Pendiente",
+    classified: "Clasificado",
+    draft_ready: "Draft ready",
+    draft_saved: "En drafts",
+    archived: "Archivo",
+  }[state];
+
+  return <span className={clsx("status-badge", `is-${state}`)}>{label}</span>;
+}
+
+function loadAudioMetadata(): Record<string, AudioMetadata> {
+  try {
+    const raw = localStorage.getItem(audioMetadataStorageKey);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, AudioMetadata>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveAudioMetadata(metadata: Record<string, AudioMetadata>) {
+  localStorage.setItem(audioMetadataStorageKey, JSON.stringify(metadata));
+}
+
+function inferMetadata(recording: RecordingSummary): AudioMetadata {
+  const pathParts = recording.final_audio_path?.split(/[\\/]/).filter(Boolean) ?? [];
+  const assistantIndex = pathParts.findIndex((part) => part.toLowerCase() === "meetings assistant");
+  const client = assistantIndex >= 0 ? pathParts[assistantIndex + 1] : "";
+  const project = assistantIndex >= 0 ? pathParts[assistantIndex + 2] : "";
+  const isDraft = client?.toLowerCase() === "drafts";
+
+  return {
+    client: isDraft ? unclassifiedClient : client || unclassifiedClient,
+    project: isDraft ? "Drafts" : project || allProjects,
+    title: displayRecordingName(recording),
+    notes: "",
+    draftState: isDraft ? "draft_saved" : client && project ? "classified" : "unclassified",
+  };
+}
+
+function buildClientGroups(rows: AudioRow[]) {
+  const counts = new Map<string, number>();
+  counts.set(unclassifiedClient, 0);
+
+  rows.forEach((row) => {
+    counts.set(row.client, (counts.get(row.client) ?? 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => {
+      if (left.name === unclassifiedClient) return -1;
+      if (right.name === unclassifiedClient) return 1;
+      return left.name.localeCompare(right.name);
+    });
+}
+
+function buildProjectsForClient(rows: AudioRow[], selectedClient: string) {
+  const visibleRows = rows.filter((row) => row.client === selectedClient);
+  const counts = new Map<string, number>();
+  counts.set(allProjects, visibleRows.length);
+
+  visibleRows.forEach((row) => {
+    counts.set(row.project, (counts.get(row.project) ?? 0) + 1);
+  });
+
+  return Array.from(counts.entries()).map(([name, count]) => ({ name, count }));
+}
+
+function toPlayableAudioSrc(path: string): string {
+  if (!isTauriRuntime) return path;
+  return convertFileSrc(path);
+}
+
+function recordingAudioPath(recording: RecordingSummary): string {
+  if (recording.final_audio_path) return recording.final_audio_path;
+  if (!recording.folder_path) return "";
+  return `${recording.folder_path.replace(/[\\/]$/, "")}\\final\\mixed.opus`;
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("es-CL", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function DeviceSelect({
