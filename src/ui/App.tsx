@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock3,
   Disc3,
+  Eye,
   ExternalLink,
   FileAudio,
   FolderOpen,
@@ -326,6 +327,7 @@ export function App() {
     async function loadSelectedArtifacts() {
       setSelectedArtifacts({});
       setArtifactError(null);
+      if (!expandedContentOpen) return;
       if (!selectedCloudJob) return;
 
       const normalizedBackendUrl = normalizeBackendUrl(backendUrl);
@@ -355,7 +357,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [backendUrl, selectedCloudJob, transcriptionApiKey]);
+  }, [backendUrl, expandedContentOpen, selectedCloudJob, transcriptionApiKey]);
 
   function handlePrimary() {
     if (isPaused) {
@@ -461,6 +463,14 @@ export function App() {
     setSaveProject(row.project === allProjects ? "" : row.project);
     setSaveFileName(row.displayName);
     setSaveNotes(row.metadata.notes);
+  }
+
+  async function handleOpenExpandedContent(row: AudioRow) {
+    handleSelectRecording(row);
+    setExpandedRecordingId(row.recording.id);
+    setArtifactError(null);
+    setSelectedArtifacts({});
+    await refreshCloudDashboard({ showMessage: false });
   }
 
   async function handlePlayerPlay() {
@@ -917,8 +927,12 @@ export function App() {
                     <div className="markdown-stage">
                       {artifactLoading ? (
                         <div className="lyrics-empty"><Loader2 className="is-spinning" /> Cargando contenido</div>
+                      ) : cloudSyncing && !selectedCloudJob ? (
+                        <div className="lyrics-empty"><Loader2 className="is-spinning" /> Buscando contenido cloud</div>
                       ) : artifactError ? (
                         <div className="lyrics-empty is-error">{artifactError}</div>
+                      ) : cloudSyncError && !selectedCloudJob ? (
+                        <div className="lyrics-empty is-error">{cloudSyncError}</div>
                       ) : selectedArtifactBlocks.length > 0 ? (
                         selectedArtifactBlocks.map((block, index) => <MarkdownBlock key={`${artifactTab}-${index}`} block={block} />)
                       ) : (
@@ -978,11 +992,11 @@ export function App() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => setExpandedRecordingId(selectedRow.recording.id)}
-                          aria-label="Expandir contenido"
-                          title="Expandir contenido"
+                          onClick={() => void handleOpenExpandedContent(selectedRow)}
+                          aria-label="Ver contenido cloud"
+                          title="Ver contenido cloud"
                         >
-                          <Maximize2 />
+                          <Eye />
                         </button>
                         <button
                           type="button"
