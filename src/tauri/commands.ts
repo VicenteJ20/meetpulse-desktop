@@ -64,6 +64,17 @@ export type TranscriptionRequestResult = {
   body: string;
 };
 
+export type CloudDashboard = {
+  clients: unknown;
+  projects: unknown;
+  jobs: unknown;
+};
+
+export type CloudJobArtifacts = {
+  transcription?: string | null;
+  analysis?: string | null;
+};
+
 let mockSnapshot: RecorderSnapshot = {
   status: "idle",
   recording_id: null,
@@ -230,16 +241,67 @@ export function requestTranscription({
   recordingId,
   endpoint,
   apiKey,
+  client,
+  project,
+  fileName,
 }: {
   recordingId: string;
   endpoint: string;
   apiKey: string;
+  client?: string;
+  project?: string;
+  fileName?: string;
 }): Promise<TranscriptionRequestResult> {
   if (!isTauriRuntime) {
     return Promise.resolve({ status: 202, body: "{}" });
   }
 
-  return invoke("request_transcription", { recordingId, endpoint, apiKey });
+  return invoke("request_transcription", { recordingId, endpoint, apiKey, client, project, fileName });
+}
+
+export async function syncCloudDashboard({
+  baseUrl,
+  apiKey,
+}: {
+  baseUrl: string;
+  apiKey: string;
+}): Promise<CloudDashboard> {
+  if (!isTauriRuntime) {
+    const [clients, projects, jobs] = await Promise.all([
+      fetchJsonWithApiKey(`${baseUrl.replace(/\/+$/, "")}/v1/dashboard/clients`, apiKey),
+      fetchJsonWithApiKey(`${baseUrl.replace(/\/+$/, "")}/v1/dashboard/projects`, apiKey),
+      fetchJsonWithApiKey(`${baseUrl.replace(/\/+$/, "")}/v1/jobs/?limit=100&offset=0`, apiKey),
+    ]);
+    return { clients, projects, jobs };
+  }
+
+  return invoke("sync_cloud_dashboard", { baseUrl, apiKey });
+}
+
+export async function getCloudJobArtifacts({
+  baseUrl,
+  apiKey,
+  jobId,
+  includeTranscription,
+  includeAnalysis,
+}: {
+  baseUrl: string;
+  apiKey: string;
+  jobId: string;
+  includeTranscription: boolean;
+  includeAnalysis: boolean;
+}): Promise<CloudJobArtifacts> {
+  if (!isTauriRuntime) {
+    const [transcription, analysis] = await Promise.all([
+      includeTranscription
+        ? fetchJobArtifactContent(baseUrl, apiKey, jobId, "transcription_md")
+        : Promise.resolve(null),
+      includeAnalysis ? fetchJobArtifactContent(baseUrl, apiKey, jobId, "analysis_md") : Promise.resolve(null),
+    ]);
+    return { transcription, analysis };
+  }
+
+  return invoke("get_cloud_job_artifacts", { baseUrl, apiKey, jobId, includeTranscription, includeAnalysis });
 }
 
 export function getAudioDevices(): Promise<AudioDevice[]> {
@@ -250,6 +312,36 @@ export function getAudioDevices(): Promise<AudioDevice[]> {
     ]);
   }
   return invoke("get_audio_devices");
+}
+
+async function fetchJsonWithApiKey(url: string, apiKey: string): Promise<unknown> {
+  const response = await fetch(url, {
+    headers: {
+      "X-API-Key": apiKey,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`El backend respondio ${response.status}.`);
+  }
+
+  return response.json();
+}
+
+async function fetchJobArtifactContent(
+  baseUrl: string,
+  apiKey: string,
+  jobId: string,
+  artifactType: "transcription_md" | "analysis_md",
+): Promise<string | null> {
+  const payload = await fetchJsonWithApiKey(
+    `${baseUrl.replace(/\/+$/, "")}/v1/jobs/${jobId}/artifacts/${artifactType}/content`,
+    apiKey,
+  );
+  if (!payload || typeof payload !== "object" || !("content" in payload)) return null;
+  const content = (payload as { content?: unknown }).content;
+  return typeof content === "string" ? content : null;
 }
 
 export function getSelectedAudioDevices(): Promise<AudioDeviceSelection> {

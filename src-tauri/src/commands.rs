@@ -89,6 +89,19 @@ pub struct TranscriptionRequestResult {
     pub body: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct CloudDashboard {
+    pub clients: serde_json::Value,
+    pub projects: serde_json::Value,
+    pub jobs: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CloudJobArtifacts {
+    pub transcription: Option<String>,
+    pub analysis: Option<String>,
+}
+
 #[tauri::command]
 pub async fn save_recording_to_library(
     state: State<'_, AppState>,
@@ -163,10 +176,35 @@ pub async fn request_transcription(
     recording_id: String,
     endpoint: String,
     api_key: String,
+    client: Option<String>,
+    project: Option<String>,
+    file_name: Option<String>,
 ) -> Result<TranscriptionRequestResult, String> {
     let recording_dir = state.storage.recording_folder(&recording_id);
     let source = recording_source_path(&state, &recording_id, &recording_dir).map_err(to_message)?;
-    send_transcription_request(&endpoint, &api_key, &source).map_err(to_message)
+    let upload_file_name = sanitized_file_stem(file_name)
+        .map(|name| format!("{name}.opus"))
+        .or_else(|| source.file_name().and_then(|name| name.to_str()).map(str::to_string))
+        .unwrap_or_else(|| "audio.opus".to_string());
+    let relative_path = transcription_relative_path(client, project);
+    send_transcription_request(&endpoint, &api_key, &source, &upload_file_name, &relative_path).map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn sync_cloud_dashboard(base_url: String, api_key: String) -> Result<CloudDashboard, String> {
+    sync_cloud_dashboard_request(&base_url, &api_key).map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn get_cloud_job_artifacts(
+    base_url: String,
+    api_key: String,
+    job_id: String,
+    include_transcription: bool,
+    include_analysis: bool,
+) -> Result<CloudJobArtifacts, String> {
+    get_cloud_job_artifacts_request(&base_url, &api_key, &job_id, include_transcription, include_analysis)
+        .map_err(to_message)
 }
 
 fn to_message(error: anyhow::Error) -> String {
@@ -252,6 +290,16 @@ fn sanitized_file_stem(value: Option<String>) -> Option<String> {
     value.and_then(|value| sanitize_path_part(value.trim_end_matches(".opus")))
 }
 
+fn transcription_relative_path(client: Option<String>, project: Option<String>) -> String {
+    let client = sanitized_folder_name(client);
+    let project = sanitized_folder_name(project);
+    match (client, project) {
+        (Some(client), Some(project)) => format!("{client}/{project}"),
+        (Some(client), None) => client,
+        _ => "drafts".to_string(),
+    }
+}
+
 fn sanitize_path_part(value: &str) -> Option<String> {
     let sanitized = value
         .trim()
@@ -308,14 +356,12 @@ fn send_transcription_request(
     endpoint: &str,
     api_key: &str,
     audio_path: &Path,
+    upload_file_name: &str,
+    relative_path: &str,
 ) -> anyhow::Result<TranscriptionRequestResult> {
     let target = parse_http_endpoint(endpoint)?;
     let audio = fs::read(audio_path).with_context(|| format!("reading {}", audio_path.display()))?;
-    let file_name = audio_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(multipart_file_name)
-        .unwrap_or_else(|| "audio.opus".to_string());
+    let file_name = multipart_file_name(upload_file_name);
     let mime = match audio_path.extension().and_then(|extension| extension.to_str()) {
         Some(extension) if extension.eq_ignore_ascii_case("mp3") => "audio/mpeg",
         _ => "audio/ogg",
@@ -329,7 +375,7 @@ fn send_transcription_request(
     body.extend_from_slice(&audio);
     write!(
         body,
-        "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"relative_path\"\r\n\r\ndrafts\r\n--{boundary}--\r\n"
+        "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"relative_path\"\r\n\r\n{relative_path}\r\n--{boundary}--\r\n"
     )?;
 
     let mut stream = TcpStream::connect((&*target.host, target.port))
@@ -372,6 +418,97 @@ fn send_transcription_request(
         status,
         body: body.trim().to_string(),
     })
+}
+
+fn sync_cloud_dashboard_request(base_url: &str, api_key: &str) -> anyhow::Result<CloudDashboard> {
+    Ok(CloudDashboard {
+        clients: send_json_get_request(&join_backend_path(base_url, "/v1/dashboard/clients")?, api_key)?,
+        projects: send_json_get_request(&join_backend_path(base_url, "/v1/dashboard/projects")?, api_key)?,
+        jobs: send_json_get_request(&join_backend_path(base_url, "/v1/jobs/?limit=100&offset=0")?, api_key)?,
+    })
+}
+
+fn get_cloud_job_artifacts_request(
+    base_url: &str,
+    api_key: &str,
+    job_id: &str,
+    include_transcription: bool,
+    include_analysis: bool,
+) -> anyhow::Result<CloudJobArtifacts> {
+    let transcription = if include_transcription {
+        Some(get_job_artifact_content(base_url, api_key, job_id, "transcription_md")?)
+    } else {
+        None
+    };
+    let analysis = if include_analysis {
+        Some(get_job_artifact_content(base_url, api_key, job_id, "analysis_md")?)
+    } else {
+        None
+    };
+
+    Ok(CloudJobArtifacts { transcription, analysis })
+}
+
+fn get_job_artifact_content(
+    base_url: &str,
+    api_key: &str,
+    job_id: &str,
+    artifact_type: &str,
+) -> anyhow::Result<String> {
+    let endpoint = join_backend_path(base_url, &format!("/v1/jobs/{job_id}/artifacts/{artifact_type}/content"))?;
+    let payload = send_json_get_request(&endpoint, api_key)?;
+    payload
+        .get("content")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .with_context(|| format!("artifact {artifact_type} sin content"))
+}
+
+fn send_json_get_request(endpoint: &str, api_key: &str) -> anyhow::Result<serde_json::Value> {
+    let target = parse_http_endpoint(endpoint)?;
+    let mut stream = TcpStream::connect((&*target.host, target.port))
+        .with_context(|| format!("connecting to {}:{}", target.host, target.port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
+
+    write!(
+        stream,
+        "GET {} HTTP/1.1\r\nHost: {}\r\nX-API-Key: {}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
+        target.path,
+        target.host_header,
+        api_key
+    )?;
+
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response)?;
+    let response_text = String::from_utf8_lossy(&response);
+    let (head, body) = response_text
+        .split_once("\r\n\r\n")
+        .map_or((response_text.as_ref(), ""), |(head, body)| (head, body));
+    let status = head
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|status| status.parse::<u16>().ok())
+        .context("respuesta HTTP invalida del backend")?;
+
+    if !(200..300).contains(&status) {
+        bail!(
+            "el backend respondio {status}: {}",
+            body.trim().lines().next().unwrap_or("sin detalle")
+        );
+    }
+
+    serde_json::from_str(body.trim()).with_context(|| format!("parsing JSON from {endpoint}"))
+}
+
+fn join_backend_path(base_url: &str, path: &str) -> anyhow::Result<String> {
+    let base = base_url.trim().trim_end_matches('/');
+    if base.is_empty() {
+        bail!("falta URL del backend");
+    }
+
+    Ok(format!("{base}/{}", path.trim_start_matches('/')))
 }
 
 fn multipart_file_name(value: &str) -> String {
