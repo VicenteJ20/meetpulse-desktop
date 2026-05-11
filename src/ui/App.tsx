@@ -288,8 +288,8 @@ export function App() {
   );
   const clients = useMemo(() => mergeClientGroups(buildClientGroups(audioRows), cloudClients), [audioRows, cloudClients]);
   const projectsForSelectedClient = useMemo(
-    () => mergeProjectsForClient(buildProjectsForClient(audioRows, selectedClient), cloudProjects, cloudClients, selectedClient),
-    [audioRows, cloudClients, cloudProjects, selectedClient],
+    () => mergeProjectsForClient(buildProjectsForClient(audioRows, selectedClient), cloudProjects, cloudClients, cloudJobs, selectedClient),
+    [audioRows, cloudClients, cloudJobs, cloudProjects, selectedClient],
   );
   const filteredRows = useMemo(
     () =>
@@ -314,7 +314,7 @@ export function App() {
   const activeAudioSrc = activeAudioPath ? toPlayableAudioSrc(activeAudioPath) : "";
   const visiblePlayerDuration = playerDurationMs || activeRow?.recording.duration_ms || 0;
   const selectedCanRequestAnalysis = selectedRow?.status === "classified" && Boolean(selectedRow && recordingAudioPath(selectedRow.recording));
-  const selectedCloudJob = selectedRow ? findCloudJobForRow(selectedRow, cloudJobs, cloudJobByRecordingId[selectedRow.recording.id]) : undefined;
+  const selectedCloudJob = selectedRow ? findCloudJobForRow(selectedRow, audioRows, cloudJobs, cloudJobByRecordingId[selectedRow.recording.id]) : undefined;
   const selectedHasCloudArtifacts = Boolean(selectedCloudJob?.has_transcription || selectedCloudJob?.has_analysis);
   const selectedArtifactContent = artifactTab === "analysis" ? selectedArtifacts.analysis : selectedArtifacts.transcription;
   const selectedArtifactBlocks = parseMarkdownBlocks(selectedArtifactContent);
@@ -867,6 +867,12 @@ export function App() {
                       >
                         <span>{project.name}</span>
                         <strong>{project.count}</strong>
+                        {(project.hasTranscription || project.hasAnalysis) && (
+                          <span className="project-cloud-badges" aria-label="Contenido cloud" title="Contenido cloud disponible">
+                            {project.hasTranscription && <CheckCircle2 />}
+                            {project.hasAnalysis && <Sparkles />}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -1504,6 +1510,7 @@ function mergeProjectsForClient(
   localProjects: { name: string; count: number }[],
   cloudProjects: CloudProject[],
   cloudClients: CloudClient[],
+  cloudJobs: CloudJob[],
   selectedClient: string,
 ) {
   const selectedCloudClient = cloudClients.find(
@@ -1521,7 +1528,11 @@ function mergeProjectsForClient(
       }
     });
 
-  return Array.from(merged.values());
+  return Array.from(merged.values()).map((project) => {
+    const relativePath = transcriptionRelativePath(selectedClient, project.name);
+    const availability = cloudAvailabilityForRelativePath(cloudJobs, relativePath);
+    return { ...project, ...availability };
+  });
 }
 
 function parseCloudClients(value: unknown): CloudClient[] {
@@ -1585,7 +1596,7 @@ function parseCloudJobs(value: unknown): CloudJob[] {
   });
 }
 
-function findCloudJobForRow(row: AudioRow, jobs: CloudJob[], linkedJobId?: string): CloudJob | undefined {
+function findCloudJobForRow(row: AudioRow, rows: AudioRow[], jobs: CloudJob[], linkedJobId?: string): CloudJob | undefined {
   const candidates = audioJobCandidateNames(row);
   const rowRelativePath = transcriptionRelativePath(row.client, row.project);
 
@@ -1594,7 +1605,18 @@ function findCloudJobForRow(row: AudioRow, jobs: CloudJob[], linkedJobId?: strin
     if (linkedJob && cloudJobMatchesRow(linkedJob, candidates, rowRelativePath)) return linkedJob;
   }
 
-  return jobs.find((job) => cloudJobMatchesRow(job, candidates, rowRelativePath));
+  const byStrictMatch = jobs.find((job) => cloudJobMatchesRow(job, candidates, rowRelativePath));
+  if (byStrictMatch) return byStrictMatch;
+
+  const rowsInSamePath = rows.filter((candidate) => transcriptionRelativePath(candidate.client, candidate.project) === rowRelativePath);
+  if (rowsInSamePath.length !== 1) return undefined;
+
+  return jobs.find(
+    (job) =>
+      normalizeRelativePathForMatch(job.relative_path ?? "") === normalizeRelativePathForMatch(rowRelativePath) &&
+      isGenericMixedAudioName(job.source_filename) &&
+      (job.has_transcription || job.has_analysis),
+  );
 }
 
 function isDraftClient(value: string): boolean {
@@ -1626,6 +1648,15 @@ function cloudJobMatchesRow(job: CloudJob, candidates: Set<string>, rowRelativeP
   if (!candidates.has(normalizeJobFileName(job.source_filename))) return false;
   if (!job.relative_path) return true;
   return normalizeRelativePathForMatch(job.relative_path) === normalizeRelativePathForMatch(rowRelativePath);
+}
+
+function cloudAvailabilityForRelativePath(jobs: CloudJob[], relativePath: string) {
+  const normalizedPath = normalizeRelativePathForMatch(relativePath);
+  const matches = jobs.filter((job) => normalizeRelativePathForMatch(job.relative_path ?? "") === normalizedPath);
+  return {
+    hasTranscription: matches.some((job) => Boolean(job.has_transcription)),
+    hasAnalysis: matches.some((job) => Boolean(job.has_analysis)),
+  };
 }
 
 function normalizeRelativePathForMatch(value: string): string {

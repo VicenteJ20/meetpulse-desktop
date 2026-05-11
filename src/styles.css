@@ -1201,6 +1201,18 @@ button {
   font-size: 11px;
 }
 
+.project-cloud-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.project-cloud-badges svg {
+  width: 13px;
+  height: 13px;
+  color: #34d399;
+}
+
 .content-grid {
   display: grid;
   min-height: 0;
