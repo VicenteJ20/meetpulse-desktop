@@ -68,7 +68,7 @@ const audioCloudJobStorageKey = "meetings-assistant-audio-cloud-jobs";
 const backendUrlStorageKey = "meetings-assistant-backend-url";
 const transcriptionApiKeyStorageKey = "meetings-assistant-transcription-api-key";
 const defaultBackendUrl = "http://localhost:8000";
-const unclassifiedClient = "Sin clasificar";
+const unclassifiedClient = "Drafts";
 const allProjects = "Todos los proyectos";
 const legacyExpandedRecorderEnabled = false;
 
@@ -1586,29 +1586,30 @@ function parseCloudJobs(value: unknown): CloudJob[] {
 }
 
 function findCloudJobForRow(row: AudioRow, jobs: CloudJob[], linkedJobId?: string): CloudJob | undefined {
+  const candidates = audioJobCandidateNames(row);
+  const rowRelativePath = transcriptionRelativePath(row.client, row.project);
+
   if (linkedJobId) {
     const linkedJob = jobs.find((job) => job.job_id === linkedJobId);
-    if (linkedJob) return linkedJob;
+    if (linkedJob && cloudJobMatchesRow(linkedJob, candidates, rowRelativePath)) return linkedJob;
   }
 
-  const candidates = audioJobCandidateNames(row);
-  const byFileName = jobs.find((job) => candidates.has(normalizeJobFileName(job.source_filename)));
-  if (byFileName) return byFileName;
+  return jobs.find((job) => cloudJobMatchesRow(job, candidates, rowRelativePath));
+}
 
-  const rowRelativePath = transcriptionRelativePath(row.client, row.project);
-  const jobsInSamePath = jobs.filter((job) => normalizeRelativePath(job.relative_path ?? "") === rowRelativePath);
-  return (
-    jobsInSamePath.find((job) => job.has_transcription || job.has_analysis) ??
-    jobsInSamePath.find((job) => job.status === "completed" || job.status === "analyzed") ??
-    jobsInSamePath[0]
-  );
+function isDraftClient(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "drafts" || normalized === "sin clasificar";
 }
 
 function audioJobCandidateNames(row: AudioRow): Set<string> {
   const path = recordingAudioPath(row.recording);
   const pathFileName = path.split(/[\\/]/).pop() ?? "";
   const displayName = row.displayName.trim();
-  const names = [pathFileName, displayName, `${displayName}.opus`, `${displayName}.mp3`];
+  const names = [displayName, `${displayName}.opus`, `${displayName}.mp3`];
+  if (!isGenericMixedAudioName(pathFileName)) {
+    names.push(pathFileName);
+  }
   return new Set(names.map(normalizeJobFileName).filter(Boolean));
 }
 
@@ -1616,7 +1617,18 @@ function normalizeJobFileName(value: string): string {
   return value.trim().toLowerCase().replace(/\.(opus|mp3)$/i, "");
 }
 
-function normalizeRelativePath(value: string): string {
+function isGenericMixedAudioName(value: string): boolean {
+  const normalized = normalizeJobFileName(value);
+  return normalized === "mixed" || normalized === "audio";
+}
+
+function cloudJobMatchesRow(job: CloudJob, candidates: Set<string>, rowRelativePath: string): boolean {
+  if (!candidates.has(normalizeJobFileName(job.source_filename))) return false;
+  if (!job.relative_path) return true;
+  return normalizeRelativePathForMatch(job.relative_path) === normalizeRelativePathForMatch(rowRelativePath);
+}
+
+function normalizeRelativePathForMatch(value: string): string {
   return value
     .trim()
     .replace(/\\/g, "/")
@@ -1721,7 +1733,7 @@ function inferMetadata(recording: RecordingSummary): AudioMetadata {
 
 function resolveAudioStatus(state: DraftState, client: string): DraftState {
   const normalizedClient = client.trim().toLowerCase();
-  if (normalizedClient && normalizedClient !== unclassifiedClient.toLowerCase() && normalizedClient !== "drafts") {
+  if (normalizedClient && !isDraftClient(normalizedClient)) {
     return state === "archived" ? "archived" : "classified";
   }
 
@@ -1784,7 +1796,7 @@ function audioFileName(path: string, displayName: string): string {
 function transcriptionRelativePath(client: string, project: string): string {
   const cleanClient = sanitizeRelativePathPart(client);
   const cleanProject = sanitizeRelativePathPart(project);
-  if (cleanClient && cleanClient !== unclassifiedClient.toLowerCase() && cleanClient !== "drafts") {
+  if (cleanClient && !isDraftClient(cleanClient)) {
     return cleanProject && cleanProject !== allProjects.toLowerCase() ? `${cleanClient}/${cleanProject}` : cleanClient;
   }
   return "drafts";
