@@ -126,6 +126,7 @@ type CloudJob = {
   job_id: string;
   source_filename: string;
   source_size_bytes?: number;
+  source_duration_ms?: number | null;
   relative_path?: string;
   status: string;
   accepted_at?: string;
@@ -162,6 +163,7 @@ export function App() {
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [playerCurrentMs, setPlayerCurrentMs] = useState(0);
   const [playerDurationMs, setPlayerDurationMs] = useState(0);
+  const [audioDurationById, setAudioDurationById] = useState<Record<string, number>>({});
   const [playerPlaying, setPlayerPlaying] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [backendUrl, setBackendUrl] = useState(() => loadBackendUrl());
@@ -346,7 +348,7 @@ export function App() {
   const activeRow = activeAudioId ? audioRows.find((row) => row.recording.id === activeAudioId) : selectedRow;
   const activeAudioPath = activeRow ? recordingAudioPath(activeRow.recording) : "";
   const activeAudioSrc = activeAudioPath ? toPlayableAudioSrc(activeAudioPath) : "";
-  const visiblePlayerDuration = playerDurationMs || activeRow?.recording.duration_ms || 0;
+  const visiblePlayerDuration = playerDurationMs || (activeRow ? audioDurationMs(activeRow, audioDurationById) : 0);
   const selectedCanRequestAnalysis = selectedRow?.source === "local" && selectedRow.status === "classified" && Boolean(recordingAudioPath(selectedRow.recording));
   const selectedCloudJob = selectedRow
     ? selectedRow.cloudJobId
@@ -576,6 +578,7 @@ export function App() {
           client: saveClient || row.client,
           project: saveProject || row.project,
           fileName: saveFileName || row.displayName,
+          durationMs: audioDurationMs(row, audioDurationById),
         });
         const accepted = parseTranscriptionAccepted(result.body);
         if (accepted?.job_id) {
@@ -591,6 +594,7 @@ export function App() {
           displayName: saveFileName || row.displayName,
           client: saveClient || row.client,
           project: saveProject || row.project,
+          durationMs: audioDurationMs(row, audioDurationById),
         });
         const accepted = parseTranscriptionAccepted(result.body);
         if (accepted?.job_id) {
@@ -954,7 +958,7 @@ export function App() {
                       {selectedCloudJob && <span>{selectedCloudJob.status}</span>}
                     </div>
                     <div className="audio-focus-meta">
-                      <span>{formatDuration(selectedRow.recording.duration_ms)}</span>
+                      <span>{formatDuration(audioDurationMs(selectedRow, audioDurationById))}</span>
                       <span>{formatDateTime(selectedRow.recording.started_at)}</span>
                       <span>{selectedCloudJob ? "Cloud vinculado" : "Sin job cloud"}</span>
                     </div>
@@ -1026,7 +1030,7 @@ export function App() {
                             </span>
                             <span className="audio-client">{row.client}</span>
                             <span className="audio-project">{row.project}</span>
-                            <span className="audio-duration">{formatDuration(row.recording.duration_ms)}</span>
+                            <span className="audio-duration">{formatDuration(audioDurationMs(row, audioDurationById))}</span>
                             <StatusBadge state={row.status} />
                           </button>
                         ))
@@ -1067,7 +1071,7 @@ export function App() {
                       <div className="details-summary">
                         <div className="summary-item">
                           <span><Clock3 /> Duracion</span>
-                          <strong>{formatDuration(selectedRow.recording.duration_ms)}</strong>
+                          <strong>{formatDuration(audioDurationMs(selectedRow, audioDurationById))}</strong>
                         </div>
                         <div className="summary-item">
                           <span><Tag /> Estado</span>
@@ -1222,7 +1226,11 @@ export function App() {
                       src={activeAudioSrc}
                       onLoadedMetadata={(event) => {
                         const seconds = event.currentTarget.duration;
-                        setPlayerDurationMs(Number.isFinite(seconds) ? Math.round(seconds * 1000) : 0);
+                        const nextDurationMs = Number.isFinite(seconds) ? Math.round(seconds * 1000) : 0;
+                        setPlayerDurationMs(nextDurationMs);
+                        if (activeRow && nextDurationMs > 0) {
+                          setAudioDurationById((current) => ({ ...current, [activeRow.recording.id]: nextDurationMs }));
+                        }
                       }}
                       onTimeUpdate={(event) => setPlayerCurrentMs(Math.round(event.currentTarget.currentTime * 1000))}
                       onPause={() => setPlayerPlaying(false)}
@@ -1653,6 +1661,7 @@ function parseCloudJobs(value: unknown): CloudJob[] {
         job_id: item.job_id,
         source_filename: item.source_filename,
         source_size_bytes: typeof item.source_size_bytes === "number" ? item.source_size_bytes : undefined,
+        source_duration_ms: typeof item.source_duration_ms === "number" || item.source_duration_ms === null ? item.source_duration_ms : undefined,
         relative_path: typeof item.relative_path === "string" ? item.relative_path : undefined,
         status: item.status,
         accepted_at: typeof item.accepted_at === "string" ? item.accepted_at : undefined,
@@ -1678,10 +1687,11 @@ function cloudJobToAudioRow(job: CloudJob): AudioRow {
       status: job.status,
       started_at: startedAt,
       completed_at: job.completed_at,
-      duration_ms: 0,
+      duration_ms: job.source_duration_ms ?? 0,
       folder_path: "",
       final_audio_path: null,
       audio_url: job.audio_url ?? null,
+      source_duration_ms: job.source_duration_ms ?? null,
       segments: 0,
       size_bytes: job.source_size_bytes ?? 0,
     },
@@ -1711,6 +1721,10 @@ function relativePathToLabels(relativePath?: string): { client: string; project:
   const client = parts[0] && !isDraftClient(parts[0]) ? parts[0] : unclassifiedClient;
   const project = parts[1] || allProjects;
   return { client, project };
+}
+
+function audioDurationMs(row: AudioRow, durationById: Record<string, number>): number {
+  return durationById[row.recording.id] || row.recording.source_duration_ms || row.recording.duration_ms || 0;
 }
 
 function findCloudJobForRow(row: AudioRow, rows: AudioRow[], jobs: CloudJob[], linkedJobId?: string): CloudJob | undefined {
@@ -1971,6 +1985,7 @@ async function requestBrowserTranscription({
   displayName,
   client,
   project,
+  durationMs,
 }: {
   endpoint: string;
   apiKey: string;
@@ -1979,6 +1994,7 @@ async function requestBrowserTranscription({
   displayName: string;
   client: string;
   project: string;
+  durationMs?: number;
 }): Promise<{ status: number; body: string }> {
   const audioResponse = await fetch(audioSrc);
   if (!audioResponse.ok) {
@@ -1990,6 +2006,9 @@ async function requestBrowserTranscription({
   const form = new FormData();
   form.append("file", blob, fileName);
   form.append("relative_path", transcriptionRelativePath(client, project));
+  if (durationMs && durationMs > 0) {
+    form.append("duration_ms", String(Math.round(durationMs)));
+  }
 
   const response = await fetch(endpoint, {
     method: "POST",

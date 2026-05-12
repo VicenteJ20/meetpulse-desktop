@@ -40,6 +40,7 @@ export type RecordingSummary = {
   folder_path: string;
   final_audio_path?: string | null;
   audio_url?: string | null;
+  source_duration_ms?: number | null;
   segments: number;
   size_bytes: number;
 };
@@ -253,6 +254,7 @@ export function requestTranscription({
   client,
   project,
   fileName,
+  durationMs,
 }: {
   recordingId: string;
   endpoint: string;
@@ -260,12 +262,13 @@ export function requestTranscription({
   client?: string;
   project?: string;
   fileName?: string;
+  durationMs?: number;
 }): Promise<TranscriptionRequestResult> {
   if (!isTauriRuntime) {
     return Promise.resolve({ status: 202, body: "{}" });
   }
 
-  return invoke("request_transcription", { recordingId, endpoint, apiKey, client, project, fileName });
+  return invoke("request_transcription", { recordingId, endpoint, apiKey, client, project, fileName, durationMs });
 }
 
 export async function syncCloudDashboard({

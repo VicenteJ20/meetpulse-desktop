@@ -194,6 +194,7 @@ pub async fn request_transcription(
     client: Option<String>,
     project: Option<String>,
     file_name: Option<String>,
+    duration_ms: Option<u64>,
 ) -> Result<TranscriptionRequestResult, String> {
     let recording_dir = state.storage.recording_folder(&recording_id);
     let source = recording_source_path(&state, &recording_id, &recording_dir).map_err(to_message)?;
@@ -202,7 +203,16 @@ pub async fn request_transcription(
         .or_else(|| source.file_name().and_then(|name| name.to_str()).map(str::to_string))
         .unwrap_or_else(|| "audio.opus".to_string());
     let relative_path = transcription_relative_path(client, project);
-    send_transcription_request(&endpoint, &api_key, &source, &upload_file_name, &relative_path).map_err(to_message)
+    let source_duration_ms = duration_ms.or_else(|| state.storage.recording_duration_ms(&recording_id).ok().flatten());
+    send_transcription_request(
+        &endpoint,
+        &api_key,
+        &source,
+        &upload_file_name,
+        &relative_path,
+        source_duration_ms,
+    )
+    .map_err(to_message)
 }
 
 #[tauri::command]
@@ -373,6 +383,7 @@ fn send_transcription_request(
     audio_path: &Path,
     upload_file_name: &str,
     relative_path: &str,
+    duration_ms: Option<u64>,
 ) -> anyhow::Result<TranscriptionRequestResult> {
     let target = parse_http_endpoint(endpoint)?;
     let audio = fs::read(audio_path).with_context(|| format!("reading {}", audio_path.display()))?;
@@ -390,8 +401,15 @@ fn send_transcription_request(
     body.extend_from_slice(&audio);
     write!(
         body,
-        "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"relative_path\"\r\n\r\n{relative_path}\r\n--{boundary}--\r\n"
+        "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"relative_path\"\r\n\r\n{relative_path}\r\n"
     )?;
+    if let Some(duration_ms) = duration_ms.filter(|value| *value > 0) {
+        write!(
+            body,
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"duration_ms\"\r\n\r\n{duration_ms}\r\n"
+        )?;
+    }
+    write!(body, "--{boundary}--\r\n")?;
 
     let mut stream = TcpStream::connect((&*target.host, target.port))
         .with_context(|| format!("connecting to {}:{}", target.host, target.port))?;

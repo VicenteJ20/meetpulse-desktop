@@ -154,6 +154,21 @@ impl Storage {
         Ok(final_audio_path)
     }
 
+    pub fn recording_duration_ms(&self, recording_id: &str) -> anyhow::Result<Option<u64>> {
+        let connection = self.connection.lock().expect("SQLite mutex poisoned");
+        let duration_ms = connection
+            .query_row(
+                "SELECT duration_ms FROM recordings WHERE id = ?1",
+                params![recording_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .map(|value| value.max(0) as u64)
+            .filter(|value| *value > 0);
+
+        Ok(duration_ms)
+    }
+
     pub fn insert_segment(&self, recording_id: &str, segment: &SegmentManifest) -> anyhow::Result<()> {
         let connection = self.connection.lock().expect("SQLite mutex poisoned");
         connection.execute(

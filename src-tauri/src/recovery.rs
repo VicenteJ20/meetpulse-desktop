@@ -62,6 +62,24 @@ impl RecoveryManager {
             }
         }
 
+        if matches!(manifest.status.as_str(), "completed" | "interrupted_recovered") {
+            let final_audio_path = recording_dir.join("final").join("mixed.opus");
+            let final_audio_path = final_audio_path.exists().then(|| final_audio_path.to_string_lossy().to_string());
+            let completed_at = manifest.completed_at.unwrap_or_else(Utc::now);
+            let duration_ms = manifest
+                .completed_at
+                .map(|completed_at| completed_at.signed_duration_since(manifest.created_at).num_milliseconds().max(0) as u64)
+                .unwrap_or_else(|| manifest_duration_ms(&manifest));
+
+            self.storage.update_recording_completed(
+                &manifest.recording_id,
+                &manifest.status,
+                &completed_at.to_rfc3339(),
+                duration_ms,
+                final_audio_path.as_deref(),
+            )?;
+        }
+
         Ok(())
     }
 
@@ -87,4 +105,19 @@ impl RecoveryManager {
 
         Ok(())
     }
+}
+
+fn manifest_duration_ms(manifest: &Manifest) -> u64 {
+    let mut mic_duration = 0_u64;
+    let mut system_duration = 0_u64;
+
+    for segment in &manifest.segments {
+        match segment.track.as_str() {
+            "mic" => mic_duration = mic_duration.saturating_add(segment.duration_ms),
+            "system" => system_duration = system_duration.saturating_add(segment.duration_ms),
+            _ => {}
+        }
+    }
+
+    mic_duration.max(system_duration)
 }
