@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Meetings Assistant",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.meetingsassistant.recorder",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -58,7 +58,17 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
-    "icon": ["icons/icon.ico"]
+    "icon": ["icons/icon.ico"],
+    "publisher": "Vicente Jorquera",
+    "copyright": "Copyright 2026 Vicente Jorquera",
+    "shortDescription": "Asistente de reuniones con grabación de audio y transcripción IA",
+    "longDescription": "Meetings Assistant es un asistente de reuniones que permite grabar audio del escritorio y del micrófono del dispositivo. Diseñado para generar transcripciones y análisis mediante IA, utilizando modelos Gemini de Google para un procesamiento seguro y profesional de las reuniones.",
+    "category": "Utility",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
   },
   "plugins": {}
 }

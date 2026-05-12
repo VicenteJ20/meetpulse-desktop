@@ -1,8 +1,8 @@
 [package]
 name = "meetings-assistant-recorder"
-version = "0.1.0"
-description = "Local resilient meeting audio recorder"
-authors = ["Meetings Assistant"]
+version = "1.0.0"
+description = "Asistente de reuniones con grabación de audio y transcripción IA - Desarrollado por Vicente Jorquera"
+authors = ["Vicente Jorquera"]
 edition = "2021"
 rust-version = "1.78"
 
@@ -40,6 +40,11 @@ wasapi = { version = "0.15", optional = true }
 windows = { version = "0.61.3", features = ["Data_Xml_Dom", "UI_Notifications"] }
 
 [features]
-default = []
+default = ["native-audio"]
 mock-audio = []
 native-audio = ["dep:cpal", "dep:opus", "dep:wasapi"]
+
+[profile.release]
+console = false
+strip = true
+lto = true
