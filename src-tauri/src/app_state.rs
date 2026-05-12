@@ -33,7 +33,11 @@ impl AppState {
         ));
 
         let recovery = RecoveryManager::new(paths.clone(), storage.clone());
-        recovery.run().context("recovering interrupted recordings")?;
+        std::thread::spawn(move || {
+            if let Err(error) = recovery.run() {
+                tracing::warn!(%error, "background recovery failed");
+            }
+        });
 
         let recorder = RecorderManager::new(app, paths, storage.clone(), audio_devices.clone());
 
