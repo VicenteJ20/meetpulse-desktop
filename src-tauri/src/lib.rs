@@ -34,6 +34,7 @@ pub fn run() {
             commands::resume_recording,
             commands::stop_recording,
             commands::list_recordings,
+            commands::cleanup_local_recording,
             commands::open_recording_folder,
             commands::open_external_url,
             commands::save_recording_to_library,

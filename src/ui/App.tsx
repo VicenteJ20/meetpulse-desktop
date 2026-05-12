@@ -33,6 +33,7 @@ import {
 import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
 import {
+  cleanupLocalRecording,
   defaultRecordingFileName,
   getCloudJobArtifacts,
   getAudioDevices,
@@ -102,6 +103,8 @@ type AudioRow = {
   client: string;
   project: string;
   status: DraftState;
+  source: "local" | "cloud";
+  cloudJobId?: string;
 };
 
 type CloudClient = {
@@ -122,10 +125,13 @@ type CloudProject = {
 type CloudJob = {
   job_id: string;
   source_filename: string;
+  source_size_bytes?: number;
   relative_path?: string;
   status: string;
   accepted_at?: string;
   completed_at?: string | null;
+  has_audio?: boolean;
+  audio_url?: string | null;
   has_transcription?: boolean;
   has_analysis?: boolean;
 };
@@ -183,6 +189,12 @@ export function App() {
   useEffect(() => {
     void init();
   }, [init]);
+
+  useEffect(() => {
+    if (isWidgetWindow) return;
+    if (!normalizeBackendUrl(backendUrl) || !transcriptionApiKey.trim()) return;
+    void refreshCloudDashboard({ showMessage: false });
+  }, [backendUrl, isWidgetWindow, transcriptionApiKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -266,13 +278,17 @@ export function App() {
   const selectedRecording = selectedRecordingId
     ? (recordings.find((recording) => recording.id === selectedRecordingId) ?? emptyRecordingSummary)
     : emptyRecordingSummary;
-  const audioRows = useMemo<AudioRow[]>(
+  const cloudMode = Boolean(normalizeBackendUrl(backendUrl) && transcriptionApiKey.trim());
+  const localAudioRows = useMemo<AudioRow[]>(
     () =>
       recordings.map((recording) => {
         const inferred = inferMetadata(recording);
         const metadata = metadataById[recording.id] ?? inferred;
-        const client = metadata.client.trim() || inferred.client;
-        const project = metadata.project.trim() || inferred.project;
+        const localClient = metadata.client.trim() || inferred.client;
+        const localProject = metadata.project.trim() || inferred.project;
+        const hasLocalClassification = Boolean(metadata.client.trim()) && !isDraftClient(metadata.client);
+        const client = cloudMode && !hasLocalClassification ? unclassifiedClient : localClient;
+        const project = cloudMode && !hasLocalClassification ? allProjects : localProject;
         const title = metadata.title.trim() || displayRecordingName(recording);
         const status = resolveAudioStatus(metadata.draftState, client);
 
@@ -283,9 +299,26 @@ export function App() {
           client,
           project,
           status,
+          source: "local",
+          cloudJobId: cloudJobByRecordingId[recording.id],
         };
       }),
-    [metadataById, recordings],
+    [cloudJobByRecordingId, cloudMode, metadataById, recordings],
+  );
+  const cloudAudioRows = useMemo<AudioRow[]>(
+    () => cloudJobs.map(cloudJobToAudioRow),
+    [cloudJobs],
+  );
+  const linkedCloudJobIds = useMemo(
+    () => new Set(Object.values(cloudJobByRecordingId).filter(Boolean)),
+    [cloudJobByRecordingId],
+  );
+  const audioRows = useMemo<AudioRow[]>(
+    () => [
+      ...cloudAudioRows,
+      ...localAudioRows.filter((row) => !row.cloudJobId || !linkedCloudJobIds.has(row.cloudJobId)),
+    ],
+    [cloudAudioRows, linkedCloudJobIds, localAudioRows],
   );
   const clients = useMemo(() => mergeClientGroups(buildClientGroups(audioRows), cloudClients), [audioRows, cloudClients]);
   const projectsForSelectedClient = useMemo(
@@ -314,8 +347,12 @@ export function App() {
   const activeAudioPath = activeRow ? recordingAudioPath(activeRow.recording) : "";
   const activeAudioSrc = activeAudioPath ? toPlayableAudioSrc(activeAudioPath) : "";
   const visiblePlayerDuration = playerDurationMs || activeRow?.recording.duration_ms || 0;
-  const selectedCanRequestAnalysis = selectedRow?.status === "classified" && Boolean(selectedRow && recordingAudioPath(selectedRow.recording));
-  const selectedCloudJob = selectedRow ? findCloudJobForRow(selectedRow, audioRows, cloudJobs, cloudJobByRecordingId[selectedRow.recording.id]) : undefined;
+  const selectedCanRequestAnalysis = selectedRow?.source === "local" && selectedRow.status === "classified" && Boolean(recordingAudioPath(selectedRow.recording));
+  const selectedCloudJob = selectedRow
+    ? selectedRow.cloudJobId
+      ? cloudJobs.find((job) => job.job_id === selectedRow.cloudJobId)
+      : findCloudJobForRow(selectedRow, audioRows, cloudJobs, cloudJobByRecordingId[selectedRow.recording.id])
+    : undefined;
   const selectedHasCloudArtifacts = Boolean(selectedCloudJob?.has_transcription || selectedCloudJob?.has_analysis);
   const selectedArtifactContent = artifactTab === "analysis" ? selectedArtifacts.analysis : selectedArtifacts.transcription;
   const selectedArtifactBlocks = parseMarkdownBlocks(selectedArtifactContent);
@@ -389,6 +426,11 @@ export function App() {
   }
 
   async function handleSave(recordingId: string, draft: boolean) {
+    if (selectedRow?.source === "cloud") {
+      setSaveError("Este audio ya esta administrado por el backend.");
+      return;
+    }
+
     setSaving(true);
     setSaveError(null);
     setSavedPath(null);
@@ -525,6 +567,7 @@ export function App() {
 
     setAnalysisSubmitting(true);
     try {
+      let acceptedJobId: string | undefined;
       if (isTauriRuntime) {
         const result = await requestTranscription({
           recordingId: row.recording.id,
@@ -536,6 +579,7 @@ export function App() {
         });
         const accepted = parseTranscriptionAccepted(result.body);
         if (accepted?.job_id) {
+          acceptedJobId = accepted.job_id;
           updateAudioCloudJob(row.recording.id, accepted.job_id);
         }
       } else {
@@ -550,12 +594,21 @@ export function App() {
         });
         const accepted = parseTranscriptionAccepted(result.body);
         if (accepted?.job_id) {
+          acceptedJobId = accepted.job_id;
           updateAudioCloudJob(row.recording.id, accepted.job_id);
         }
       }
 
       setAnalysisMessage("Analisis solicitado. El servicio acepto el audio para procesarlo.");
       await refreshCloudDashboard({ showMessage: false });
+      if (acceptedJobId) {
+        if (row.source === "local") {
+          await cleanupLocalRecording(row.recording.id);
+          await refresh();
+        }
+        setSelectedRecordingId(acceptedJobId);
+        setActiveAudioId(acceptedJobId);
+      }
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "No se pudo solicitar el analisis.");
     } finally {
@@ -1029,33 +1082,33 @@ export function App() {
                         <div className="save-fields details-fields">
                           <label className="field-control">
                             <span>Nombre del audio</span>
-                            <input value={saveFileName} onChange={(event) => setSaveFileName(event.currentTarget.value)} placeholder={selectedRow.displayName} disabled={saving} />
+                            <input value={saveFileName} onChange={(event) => setSaveFileName(event.currentTarget.value)} placeholder={selectedRow.displayName} disabled={saving || selectedRow.source === "cloud"} />
                           </label>
                           <label className="field-control">
                             <span>Cliente</span>
-                            <input value={saveClient} onChange={(event) => setSaveClient(event.currentTarget.value)} placeholder="Sin cliente" disabled={saving} />
+                            <input value={saveClient} onChange={(event) => setSaveClient(event.currentTarget.value)} placeholder="Sin cliente" disabled={saving || selectedRow.source === "cloud"} />
                           </label>
                           <label className="field-control">
                             <span>Proyecto</span>
-                            <input value={saveProject} onChange={(event) => setSaveProject(event.currentTarget.value)} placeholder="Sin proyecto" disabled={saving} />
+                            <input value={saveProject} onChange={(event) => setSaveProject(event.currentTarget.value)} placeholder="Sin proyecto" disabled={saving || selectedRow.source === "cloud"} />
                           </label>
                           <label className="field-control">
                             <span>Notas internas</span>
-                            <textarea value={saveNotes} onChange={(event) => setSaveNotes(event.currentTarget.value)} placeholder="Notas internas" disabled={saving} />
+                            <textarea value={saveNotes} onChange={(event) => setSaveNotes(event.currentTarget.value)} placeholder="Notas internas" disabled={saving || selectedRow.source === "cloud"} />
                           </label>
                         </div>
                       </div>
 
                       <div className="organize-actions dashboard-actions">
-                        <button type="button" onClick={() => void openRecordingFolder(selectedRow.recording.id)} disabled={saving}>
+                        <button type="button" onClick={() => void openRecordingFolder(selectedRow.recording.id)} disabled={saving || selectedRow.source === "cloud"}>
                           <FolderOpen />
                           Abrir
                         </button>
-                        <button type="button" className="save-strong" onClick={() => void handleSave(selectedRow.recording.id, false)} disabled={saving}>
+                        <button type="button" className="save-strong" onClick={() => void handleSave(selectedRow.recording.id, false)} disabled={saving || selectedRow.source === "cloud"}>
                           <Save />
                           Guardar biblioteca
                         </button>
-                        <button type="button" className="draft-strong" onClick={() => void handleSave(selectedRow.recording.id, true)} disabled={saving}>
+                        <button type="button" className="draft-strong" onClick={() => void handleSave(selectedRow.recording.id, true)} disabled={saving || selectedRow.source === "cloud"}>
                           <ChevronRight />
                           Drafts
                         </button>
@@ -1599,15 +1652,65 @@ function parseCloudJobs(value: unknown): CloudJob[] {
       {
         job_id: item.job_id,
         source_filename: item.source_filename,
+        source_size_bytes: typeof item.source_size_bytes === "number" ? item.source_size_bytes : undefined,
         relative_path: typeof item.relative_path === "string" ? item.relative_path : undefined,
         status: item.status,
         accepted_at: typeof item.accepted_at === "string" ? item.accepted_at : undefined,
         completed_at: typeof item.completed_at === "string" || item.completed_at === null ? item.completed_at : undefined,
+        has_audio: typeof item.has_audio === "boolean" ? item.has_audio : undefined,
+        audio_url: typeof item.audio_url === "string" || item.audio_url === null ? item.audio_url : undefined,
         has_transcription: typeof item.has_transcription === "boolean" ? item.has_transcription : undefined,
         has_analysis: typeof item.has_analysis === "boolean" ? item.has_analysis : undefined,
       },
     ];
   });
+}
+
+function cloudJobToAudioRow(job: CloudJob): AudioRow {
+  const { client, project } = relativePathToLabels(job.relative_path);
+  const title = job.source_filename.replace(/\.(opus|mp3)$/i, "") || job.job_id;
+  const startedAt = job.accepted_at ?? job.completed_at ?? new Date(0).toISOString();
+  const hasCloudContent = Boolean(job.has_transcription || job.has_analysis);
+
+  return {
+    recording: {
+      id: job.job_id,
+      status: job.status,
+      started_at: startedAt,
+      completed_at: job.completed_at,
+      duration_ms: 0,
+      folder_path: "",
+      final_audio_path: null,
+      audio_url: job.audio_url ?? null,
+      segments: 0,
+      size_bytes: job.source_size_bytes ?? 0,
+    },
+    metadata: {
+      client,
+      project,
+      title,
+      notes: "",
+      draftState: hasCloudContent ? "classified" : "draft_saved",
+    },
+    displayName: title,
+    client,
+    project,
+    status: hasCloudContent ? "classified" : "draft_saved",
+    source: "cloud",
+    cloudJobId: job.job_id,
+  };
+}
+
+function relativePathToLabels(relativePath?: string): { client: string; project: string } {
+  const parts = (relativePath ?? "drafts")
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const client = parts[0] && !isDraftClient(parts[0]) ? parts[0] : unclassifiedClient;
+  const project = parts[1] || allProjects;
+  return { client, project };
 }
 
 function findCloudJobForRow(row: AudioRow, rows: AudioRow[], jobs: CloudJob[], linkedJobId?: string): CloudJob | undefined {
@@ -1616,7 +1719,7 @@ function findCloudJobForRow(row: AudioRow, rows: AudioRow[], jobs: CloudJob[], l
 
   if (linkedJobId) {
     const linkedJob = jobs.find((job) => job.job_id === linkedJobId);
-    if (linkedJob && cloudJobMatchesRow(linkedJob, candidates, rowRelativePath)) return linkedJob;
+    if (linkedJob) return linkedJob;
   }
 
   const byStrictMatch = jobs.find((job) => cloudJobMatchesRow(job, candidates, rowRelativePath));
@@ -1625,12 +1728,15 @@ function findCloudJobForRow(row: AudioRow, rows: AudioRow[], jobs: CloudJob[], l
   const rowsInSamePath = rows.filter((candidate) => transcriptionRelativePath(candidate.client, candidate.project) === rowRelativePath);
   if (rowsInSamePath.length !== 1) return undefined;
 
-  return jobs.find(
+  const artifactJobsInSamePath = jobs.filter(
     (job) =>
       normalizeRelativePathForMatch(job.relative_path ?? "") === normalizeRelativePathForMatch(rowRelativePath) &&
-      isGenericMixedAudioName(job.source_filename) &&
       (job.has_transcription || job.has_analysis),
   );
+
+  if (artifactJobsInSamePath.length === 1) return artifactJobsInSamePath[0];
+
+  return artifactJobsInSamePath.find((job) => isGenericMixedAudioName(job.source_filename));
 }
 
 function isDraftClient(value: string): boolean {
@@ -1815,11 +1921,13 @@ function buildProjectsForClient(rows: AudioRow[], selectedClient: string) {
 }
 
 function toPlayableAudioSrc(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
   if (!isTauriRuntime) return path;
   return convertFileSrc(path);
 }
 
 function recordingAudioPath(recording: RecordingSummary): string {
+  if (recording.audio_url) return recording.audio_url;
   if (recording.final_audio_path) return recording.final_audio_path;
   if (!recording.folder_path) return "";
   return `${recording.folder_path.replace(/[\\/]$/, "")}\\final\\mixed.opus`;

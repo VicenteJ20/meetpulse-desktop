@@ -10,7 +10,7 @@ use anyhow::{bail, Context};
 use chrono::Local;
 use directories::UserDirs;
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::{
@@ -65,6 +65,21 @@ pub async fn open_recording_folder(
     app.opener()
         .open_path(path.to_string_lossy().to_string(), None::<String>)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn cleanup_local_recording(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    recording_id: String,
+) -> Result<(), String> {
+    let recording_dir = state.storage.delete_recording_local(&recording_id).map_err(to_message)?;
+    let recordings_root = state.storage.recordings_root();
+    if recording_dir.starts_with(&recordings_root) && recording_dir.exists() {
+        fs::remove_dir_all(&recording_dir).map_err(|error| error.to_string())?;
+    }
+    let _ = app.emit("recorder://recordings-changed", ());
+    Ok(())
 }
 
 #[tauri::command]

@@ -39,6 +39,7 @@ export type RecordingSummary = {
   duration_ms: number;
   folder_path: string;
   final_audio_path?: string | null;
+  audio_url?: string | null;
   segments: number;
   size_bytes: number;
 };
@@ -201,6 +202,14 @@ export function openRecordingFolder(recordingId: string): Promise<void> {
     return Promise.resolve();
   }
   return invoke("open_recording_folder", { recordingId });
+}
+
+export function cleanupLocalRecording(recordingId: string): Promise<void> {
+  if (!isTauriRuntime) {
+    mockRecordings = mockRecordings.filter((recording) => recording.id !== recordingId);
+    return Promise.resolve();
+  }
+  return invoke("cleanup_local_recording", { recordingId });
 }
 
 export function openExternalUrl(url: string): Promise<void> {

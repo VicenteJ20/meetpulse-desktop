@@ -225,6 +225,18 @@ impl Storage {
         self.paths.recording_dir(recording_id)
     }
 
+    pub fn recordings_root(&self) -> PathBuf {
+        self.paths.recordings.clone()
+    }
+
+    pub fn delete_recording_local(&self, recording_id: &str) -> anyhow::Result<PathBuf> {
+        let recording_dir = self.recording_folder(recording_id);
+        let connection = self.connection.lock().expect("SQLite mutex poisoned");
+        connection.execute("DELETE FROM segments WHERE recording_id = ?1", params![recording_id])?;
+        connection.execute("DELETE FROM recordings WHERE id = ?1", params![recording_id])?;
+        Ok(recording_dir)
+    }
+
     pub fn recording_open_folder(&self, recording_id: &str) -> anyhow::Result<PathBuf> {
         let connection = self.connection.lock().expect("SQLite mutex poisoned");
         let final_audio_path = connection
