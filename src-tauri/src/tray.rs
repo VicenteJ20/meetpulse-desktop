@@ -11,7 +11,7 @@ const QUIT: &str = "quit";
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = MenuBuilder::new(app)
-        .text(SHOW_WIDGET, "Mostrar widget (Ctrl+Alt+M)")
+        .text(SHOW_WIDGET, "Mostrar widget (Ctrl+Shift+M)")
         .text(SHOW_DASHBOARD, "Abrir dashboard")
         .separator()
         .text(HIDE_ALL, "Ocultar ventanas")
