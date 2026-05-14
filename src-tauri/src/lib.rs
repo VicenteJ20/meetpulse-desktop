@@ -2,6 +2,7 @@ mod app_state;
 mod audio;
 mod commands;
 mod finalizer;
+mod hotkey;
 mod manifest;
 mod native_audio;
 mod notifications;
@@ -25,6 +26,7 @@ pub fn run() {
             let state = AppState::initialize(app.handle().clone())?;
             app.manage(state);
             tray::setup(app.handle())?;
+            hotkey::setup(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

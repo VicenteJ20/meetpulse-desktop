@@ -11,7 +11,7 @@ const QUIT: &str = "quit";
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = MenuBuilder::new(app)
-        .text(SHOW_WIDGET, "Mostrar widget")
+        .text(SHOW_WIDGET, "Mostrar widget (Ctrl+Alt+M)")
         .text(SHOW_DASHBOARD, "Abrir dashboard")
         .separator()
         .text(HIDE_ALL, "Ocultar ventanas")
@@ -23,7 +23,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(true)
         .tooltip("Meetings Assistant")
         .on_menu_event(|app, event| match event.id().as_ref() {
-            SHOW_WIDGET => show_window(app, "widget"),
+            SHOW_WIDGET => show_widget_or_dashboard(app),
             SHOW_DASHBOARD => show_window(app, "main"),
             HIDE_ALL => hide_all_windows(app),
             QUIT => app.exit(0),
@@ -40,7 +40,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
                 ..
             } = event
             {
-                show_window(tray.app_handle(), "widget");
+                show_widget_or_dashboard(tray.app_handle());
             }
         });
 
@@ -56,6 +56,14 @@ pub fn show_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
     if let Some(window) = app.get_webview_window(label) {
         let _ = window.show();
         let _ = window.set_focus();
+    }
+}
+
+pub fn show_widget_or_dashboard<R: Runtime>(app: &AppHandle<R>) {
+    if app.get_webview_window("widget").is_some() {
+        show_window(app, "widget");
+    } else {
+        show_window(app, "main");
     }
 }
 
