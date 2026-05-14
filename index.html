@@ -4,9 +4,56 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Meetings Assistant</title>
+    <style>
+      :root {
+        color: #fffef0;
+        background: #071226;
+        font-family: "Segoe UI", Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+
+      html,
+      body,
+      #root {
+        width: 100%;
+        min-width: 180px;
+        min-height: 100vh;
+        margin: 0;
+        background: #071226;
+      }
+
+      body {
+        overflow: hidden;
+      }
+
+      .app-boot {
+        display: grid;
+        min-height: 100vh;
+        place-items: center;
+        color: #e0f2fe;
+        background:
+          linear-gradient(180deg, rgba(7, 18, 38, 0.99) 0%, rgba(9, 31, 59, 0.99) 46%, rgba(11, 52, 89, 0.98) 100%),
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 28px);
+      }
+
+      .app-boot__mark {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 8px;
+        color: #071226;
+        background: #7dd3fc;
+        font-size: 20px;
+        font-weight: 900;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="app-boot" aria-label="Cargando Meetings Assistant">
+        <div class="app-boot__mark">M</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

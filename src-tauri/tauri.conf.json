@@ -23,6 +23,7 @@
         "resizable": true,
         "decorations": false,
         "transparent": false,
+        "backgroundColor": "#071226",
         "alwaysOnTop": false,
         "skipTaskbar": false
       },
@@ -38,6 +39,7 @@
         "resizable": false,
         "decorations": false,
         "transparent": false,
+        "backgroundColor": "#061020",
         "alwaysOnTop": true,
         "skipTaskbar": true
       }
