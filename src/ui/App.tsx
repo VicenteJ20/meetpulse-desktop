@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CheckCircle2,
   Clock3,
+  Copy,
   Disc3,
   Eye,
   ExternalLink,
@@ -180,6 +181,7 @@ export function App() {
   const [artifactError, setArtifactError] = useState<string | null>(null);
   const [selectedArtifacts, setSelectedArtifacts] = useState<{ transcription?: string | null; analysis?: string | null }>({});
   const [artifactTab, setArtifactTab] = useState<"transcription" | "analysis">("transcription");
+  const [artifactCopyState, setArtifactCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [analysisSubmitting, setAnalysisSubmitting] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -398,6 +400,10 @@ export function App() {
       cancelled = true;
     };
   }, [backendUrl, expandedContentOpen, selectedCloudJob, transcriptionApiKey]);
+
+  useEffect(() => {
+    setArtifactCopyState("idle");
+  }, [artifactTab, selectedArtifactContent]);
 
   function handlePrimary() {
     if (isPaused) {
@@ -666,6 +672,18 @@ export function App() {
       setCloudSyncError(error instanceof Error ? error.message : "No se pudo sincronizar con la nube.");
     } finally {
       setCloudSyncing(false);
+    }
+  }
+
+  async function handleCopyArtifact() {
+    if (!selectedArtifactContent?.trim()) return;
+
+    try {
+      await copyTextToClipboard(selectedArtifactContent);
+      setArtifactCopyState("copied");
+      window.setTimeout(() => setArtifactCopyState("idle"), 1800);
+    } catch {
+      setArtifactCopyState("error");
     }
   }
 
@@ -964,7 +982,20 @@ export function App() {
                       <span>{selectedCloudJob ? "Cloud vinculado" : "Sin job cloud"}</span>
                     </div>
                     <div className="content-switch-wrap">
-                      <span>Contenido</span>
+                      <div className="content-switch-head">
+                        <span>Contenido</span>
+                        <button
+                          type="button"
+                          className={clsx("copy-content-button", artifactCopyState === "copied" && "is-copied", artifactCopyState === "error" && "is-error")}
+                          onClick={() => void handleCopyArtifact()}
+                          disabled={!selectedArtifactContent?.trim()}
+                          title={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"}`}
+                          aria-label={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"}`}
+                        >
+                          {artifactCopyState === "copied" ? <CheckCircle2 /> : <Copy />}
+                          <span>{artifactCopyState === "copied" ? "Copiado" : artifactCopyState === "error" ? "Error" : "Copiar"}</span>
+                        </button>
+                      </div>
                       <div className="content-switch" role="tablist" aria-label="Contenido del job">
                         <button
                           type="button"
@@ -1475,35 +1506,60 @@ function StatusBadge({ state }: { state: DraftState }) {
 type MarkdownBlockData =
   | { type: "heading"; level: number; text: string }
   | { type: "paragraph"; text: string }
-  | { type: "list"; items: string[] }
+  | { type: "list"; ordered: boolean; items: string[] }
   | { type: "quote"; text: string }
-  | { type: "meta"; text: string };
+  | { type: "meta"; label: string; value: string }
+  | { type: "divider" };
+
+type MarkdownInlinePart =
+  | { type: "text"; value: string }
+  | { type: "strong"; value: string }
+  | { type: "code"; value: string };
 
 function MarkdownBlock({ block }: { block: MarkdownBlockData }) {
   if (block.type === "heading") {
-    const className = clsx("markdown-heading", block.level <= 2 && "is-major");
-    return <h3 className={className}>{block.text}</h3>;
+    const Tag = block.level <= 2 ? "h2" : "h3";
+    const className = clsx("markdown-heading", block.level <= 2 && "is-major", block.level >= 4 && "is-minor");
+    return <Tag className={className}>{renderMarkdownInline(block.text)}</Tag>;
   }
 
   if (block.type === "list") {
+    const ListTag = block.ordered ? "ol" : "ul";
     return (
-      <ul className="markdown-list">
+      <ListTag className={clsx("markdown-list", block.ordered && "is-ordered")}>
         {block.items.map((item, index) => (
-          <li key={`${item}-${index}`}>{item}</li>
+          <li key={`${item}-${index}`}>{renderMarkdownInline(item)}</li>
         ))}
-      </ul>
+      </ListTag>
     );
   }
 
   if (block.type === "quote") {
-    return <blockquote className="markdown-quote">{block.text}</blockquote>;
+    return <blockquote className="markdown-quote">{renderMarkdownInline(block.text)}</blockquote>;
   }
 
   if (block.type === "meta") {
-    return <p className="markdown-meta">{block.text}</p>;
+    return (
+      <p className="markdown-meta">
+        <span>{renderMarkdownInline(block.label)}</span>
+        <strong>{renderMarkdownInline(block.value)}</strong>
+      </p>
+    );
   }
 
-  return <p className="markdown-paragraph">{block.text}</p>;
+  if (block.type === "divider") {
+    return <hr className="markdown-divider" />;
+  }
+
+  return <p className="markdown-paragraph">{renderMarkdownInline(block.text)}</p>;
+}
+
+function renderMarkdownInline(text: string): ReactNode {
+  return parseMarkdownInline(text).map((part, index) => {
+    if (part.type === "strong") return <strong key={`${part.value}-${index}`}>{part.value}</strong>;
+    if (part.type === "code") return <code key={`${part.value}-${index}`}>{part.value}</code>;
+    return <span key={`${part.value}-${index}`}>{part.value}</span>;
+  });
 }
 
 function loadAudioMetadata(): Record<string, AudioMetadata> {
@@ -1810,10 +1866,18 @@ function parseMarkdownBlocks(content?: string | null): MarkdownBlockData[] {
   const normalized = content.replace(/^---[\s\S]*?---\s*/m, "");
   const blocks: MarkdownBlockData[] = [];
   let listItems: string[] = [];
+  let listOrdered = false;
+  let paragraphLines: string[] = [];
+
+  function flushParagraph() {
+    if (paragraphLines.length === 0) return;
+    blocks.push({ type: "paragraph", text: paragraphLines.join(" ") });
+    paragraphLines = [];
+  }
 
   function flushList() {
     if (listItems.length > 0) {
-      blocks.push({ type: "list", items: listItems });
+      blocks.push({ type: "list", ordered: listOrdered, items: listItems });
       listItems = [];
     }
   }
@@ -1821,46 +1885,114 @@ function parseMarkdownBlocks(content?: string | null): MarkdownBlockData[] {
   normalized.split(/\r?\n/).forEach((rawLine) => {
     const line = rawLine.trim();
     if (!line) {
+      flushParagraph();
       flushList();
+      return;
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "divider" });
       return;
     }
 
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
+      flushParagraph();
       flushList();
-      blocks.push({ type: "heading", level: heading[1].length, text: cleanMarkdownInline(heading[2]) });
+      blocks.push({ type: "heading", level: heading[1].length, text: stripMarkdownContainers(heading[2]) });
       return;
     }
 
-    const listItem = line.match(/^[-*]\s+(.+)$/);
-    if (listItem) {
-      listItems.push(cleanMarkdownInline(listItem[1]));
+    const unorderedListItem = line.match(/^[-*]\s+(.+)$/);
+    const orderedListItem = line.match(/^\d+[.)]\s+(.+)$/);
+    if (unorderedListItem || orderedListItem) {
+      flushParagraph();
+      const ordered = Boolean(orderedListItem);
+      if (listItems.length > 0 && listOrdered !== ordered) flushList();
+      listOrdered = ordered;
+      listItems.push(stripMarkdownContainers((orderedListItem ?? unorderedListItem)?.[1] ?? ""));
       return;
     }
 
     if (line.startsWith(">")) {
+      flushParagraph();
       flushList();
-      blocks.push({ type: "quote", text: cleanMarkdownInline(line.replace(/^>\s*/, "")) });
+      blocks.push({ type: "quote", text: stripMarkdownContainers(line.replace(/^>\s*/, "")) });
+      return;
+    }
+
+    const meta = line.match(/^([^:]{2,44}):\s+(.+)$/);
+    if (meta && line.length < 140) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "meta", label: stripMarkdownContainers(meta[1]), value: stripMarkdownContainers(meta[2]) });
       return;
     }
 
     flushList();
-    blocks.push({
-      type: line.includes(":") && line.length < 90 ? "meta" : "paragraph",
-      text: cleanMarkdownInline(line),
-    });
+    paragraphLines.push(stripMarkdownContainers(line));
   });
 
+  flushParagraph();
   flushList();
   return blocks.slice(0, 120);
 }
 
-function cleanMarkdownInline(value: string): string {
+function stripMarkdownContainers(value: string): string {
   return value
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/, "")
     .trim();
+}
+
+function parseMarkdownInline(value: string): MarkdownInlinePart[] {
+  const parts: MarkdownInlinePart[] = [];
+  const pattern = /(\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(value)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", value: value.slice(lastIndex, match.index) });
+    }
+
+    if (match[4]) {
+      parts.push({ type: "code", value: match[4] });
+    } else {
+      parts.push({ type: "strong", value: match[2] ?? match[3] ?? "" });
+    }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < value.length) {
+    parts.push({ type: "text", value: value.slice(lastIndex) });
+  }
+
+  return parts.length > 0 ? parts : [{ type: "text", value }];
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    const copied = document.execCommand("copy");
+    if (!copied) throw new Error("copy command failed");
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
 
 function parseTranscriptionAccepted(body: string): { job_id?: string; status?: string } | null {
