@@ -84,6 +84,11 @@ export type AnalysisRetryResult = {
   status: string;
 };
 
+export type AuthState = {
+  is_authenticated: boolean;
+  email: string | null;
+};
+
 let mockSnapshot: RecorderSnapshot = {
   status: "idle",
   recording_id: null,
@@ -427,6 +432,27 @@ export function defaultRecordingFileName(date: Date): string {
   const hour = date.getHours().toString().padStart(2, "0");
   const minute = date.getMinutes().toString().padStart(2, "0");
   return `grabacion_${day}_${month}_${year}_${hour}_${minute}`;
+}
+
+export function getAuthState(): Promise<AuthState> {
+  if (!isTauriRuntime) {
+    return Promise.resolve({ is_authenticated: false, email: null });
+  }
+  return invoke("get_auth_state");
+}
+
+export function startGoogleAuth(): Promise<AuthState> {
+  if (!isTauriRuntime) {
+    return Promise.resolve({ is_authenticated: true, email: "test@example.com" });
+  }
+  return invoke("start_google_auth");
+}
+
+export function logoutAuth(): Promise<void> {
+  if (!isTauriRuntime) {
+    return Promise.resolve();
+  }
+  return invoke("logout_auth");
 }
 
 function updateMockDuration(): RecorderSnapshot {

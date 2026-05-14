@@ -1,5 +1,6 @@
 mod app_state;
 mod audio;
+mod auth;
 mod commands;
 mod finalizer;
 mod hotkey;
@@ -47,7 +48,10 @@ pub fn run() {
             commands::request_transcription,
             commands::request_analysis_retry,
             commands::sync_cloud_dashboard,
-            commands::get_cloud_job_artifacts
+            commands::get_cloud_job_artifacts,
+            commands::get_auth_state,
+            commands::start_google_auth,
+            commands::logout_auth
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Meetings Assistant")

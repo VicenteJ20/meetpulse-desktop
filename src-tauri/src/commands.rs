@@ -16,6 +16,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::{
     app_state::AppState,
     audio::{self, AudioDevice, AudioDeviceSelection},
+    auth::AuthState,
     manifest::Manifest,
     recorder::RecorderSnapshot,
     storage::RecordingSummary,
@@ -194,16 +195,47 @@ pub async fn select_microphone(state: State<'_, AppState>, device_id: String) ->
 }
 
 #[tauri::command]
+pub async fn get_cloud_job_artifacts(
+    state: State<'_, AppState>,
+    job_id: String,
+    include_transcription: bool,
+    include_analysis: bool,
+) -> Result<CloudJobArtifacts, String> {
+    let config = get_backend_config();
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticación")?;
+    get_cloud_job_artifacts_request(&config.base_url, &token.access_token, &job_id, include_transcription, include_analysis)
+        .map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn get_auth_state(state: State<'_, AppState>) -> Result<AuthState, String> {
+    state.auth.get_auth_state().map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn start_google_auth(app: AppHandle, state: State<'_, AppState>) -> Result<AuthState, String> {
+    state.auth.start_oauth_flow(app).await.map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn logout_auth(state: State<'_, AppState>) -> Result<(), String> {
+    state.auth.delete_tokens().map_err(to_message)
+}
+
+#[tauri::command]
 pub async fn request_transcription(
     state: State<'_, AppState>,
     recording_id: String,
-    endpoint: String,
-    api_key: String,
     client: Option<String>,
     project: Option<String>,
     file_name: Option<String>,
     duration_ms: Option<u64>,
 ) -> Result<TranscriptionRequestResult, String> {
+    let config = get_backend_config();
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticación")?;
+
     let recording_dir = state.storage.recording_folder(&recording_id);
     let source = recording_source_path(&state, &recording_id, &recording_dir).map_err(to_message)?;
     let upload_file_name = sanitized_file_stem(file_name)
@@ -213,8 +245,8 @@ pub async fn request_transcription(
     let relative_path = transcription_relative_path(client, project);
     let source_duration_ms = duration_ms.or_else(|| state.storage.recording_duration_ms(&recording_id).ok().flatten());
     send_transcription_request(
-        &endpoint,
-        &api_key,
+        &config.endpoint,
+        &token.access_token,
         &source,
         &upload_file_name,
         &relative_path,
@@ -224,29 +256,22 @@ pub async fn request_transcription(
 }
 
 #[tauri::command]
-pub async fn sync_cloud_dashboard(base_url: String, api_key: String) -> Result<CloudDashboard, String> {
-    sync_cloud_dashboard_request(&base_url, &api_key).map_err(to_message)
+pub async fn sync_cloud_dashboard(state: State<'_, AppState>) -> Result<CloudDashboard, String> {
+    let config = get_backend_config();
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticación")?;
+    sync_cloud_dashboard_request(&config.base_url, &token.access_token).map_err(to_message)
 }
 
 #[tauri::command]
 pub async fn request_analysis_retry(
-    base_url: String,
-    api_key: String,
+    state: State<'_, AppState>,
     job_id: String,
 ) -> Result<AnalysisRetryResult, String> {
-    request_analysis_retry_request(&base_url, &api_key, &job_id).map_err(to_message)
-}
-
-#[tauri::command]
-pub async fn get_cloud_job_artifacts(
-    base_url: String,
-    api_key: String,
-    job_id: String,
-    include_transcription: bool,
-    include_analysis: bool,
-) -> Result<CloudJobArtifacts, String> {
-    get_cloud_job_artifacts_request(&base_url, &api_key, &job_id, include_transcription, include_analysis)
-        .map_err(to_message)
+    let config = get_backend_config();
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticación")?;
+    request_analysis_retry_request(&config.base_url, &token.access_token, &job_id).map_err(to_message)
 }
 
 fn to_message(error: anyhow::Error) -> String {
@@ -435,7 +460,7 @@ fn send_transcription_request(
 
     write!(
         stream,
-        "POST {} HTTP/1.1\r\nHost: {}\r\nX-API-Key: {}\r\nContent-Type: multipart/form-data; boundary={}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "POST {} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nContent-Type: multipart/form-data; boundary={}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         target.path,
         target.host_header,
         api_key,
@@ -561,7 +586,7 @@ fn send_json_request(method: &str, endpoint: &str, api_key: &str) -> anyhow::Res
 
     write!(
         stream,
-        "{} {} HTTP/1.1\r\nHost: {}\r\nX-API-Key: {}\r\nAccept: application/json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        "{} {} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nAccept: application/json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
         method,
         target.path,
         target.host_header,
@@ -613,6 +638,19 @@ fn multipart_file_name(value: &str) -> String {
         "audio.opus".to_string()
     } else {
         sanitized
+    }
+}
+
+#[derive(Debug)]
+struct BackendConfig {
+    base_url: String,
+    endpoint: String,
+}
+
+fn get_backend_config() -> BackendConfig {
+    BackendConfig {
+        base_url: "http://localhost:8000".to_string(),
+        endpoint: "http://localhost:8000".to_string(),
     }
 }
 

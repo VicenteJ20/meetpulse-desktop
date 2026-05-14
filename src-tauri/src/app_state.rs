@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     audio::{self, AudioDeviceSelection},
+    auth::GoogleAuth,
     paths::AppPaths,
     recorder::RecorderManager,
     recovery::RecoveryManager,
@@ -20,6 +21,7 @@ pub struct AppState {
     pub storage: Arc<Storage>,
     pub audio_devices: Arc<StdMutex<AudioDeviceSelection>>,
     pub audio_device_config: PathBuf,
+    pub auth: Arc<GoogleAuth>,
 }
 
 impl AppState {
@@ -40,12 +42,14 @@ impl AppState {
         });
 
         let recorder = RecorderManager::new(app, paths, storage.clone(), audio_devices.clone());
+        let auth = Arc::new(GoogleAuth::new());
 
         Ok(Self {
             recorder: Arc::new(Mutex::new(recorder)),
             storage,
             audio_devices,
             audio_device_config,
+            auth,
         })
     }
 }

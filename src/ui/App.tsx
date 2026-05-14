@@ -60,6 +60,7 @@ import {
   showWindow,
   startWindowDrag,
 } from "../tauri/window";
+import { useAuthStore } from "../store/authStore";
 import { useRecorderStore } from "../store/recorderStore";
 
 const bars = [
@@ -142,6 +143,7 @@ type CloudJob = {
 
 export function App() {
   const { snapshot, recordings, loading, error, init, refresh, start, pause, resume, stop } = useRecorderStore();
+  const { authState, init: initAuth, login, logout } = useAuthStore();
   const windowLabel = currentWindowLabel();
   const isWidgetWindow = windowLabel === "widget";
   const [now, setNow] = useState(() => Date.now());
@@ -194,7 +196,8 @@ export function App() {
 
   useEffect(() => {
     void init();
-  }, [init]);
+    void initAuth();
+  }, [init, initAuth]);
 
   useEffect(() => {
     if (isWidgetWindow) return;
@@ -950,6 +953,25 @@ export function App() {
                         <span><strong>{cloudClients.length}</strong> clientes</span>
                         <span><strong>{cloudProjects.length}</strong> proyectos</span>
                         <span><strong>{cloudJobs.length}</strong> jobs</span>
+                      </div>
+                    </div>
+                    <div className="google-auth-panel">
+                      <div className="google-auth-head">
+                        <div>
+                          <span>Autenticacion Google</span>
+                          <strong>{authState?.is_authenticated ? authState.email ?? "Conectado" : "No conectado"}</strong>
+                        </div>
+                        {authState?.is_authenticated ? (
+                          <button type="button" onClick={() => void logout()} disabled={useAuthStore.getState().loading}>
+                            {useAuthStore.getState().loading ? <Loader2 className="is-spinning" /> : <X />}
+                            {useAuthStore.getState().loading ? "Cerrando" : "Desconectar"}
+                          </button>
+                        ) : (
+                          <button type="button" onClick={() => void login()} disabled={useAuthStore.getState().loading}>
+                            {useAuthStore.getState().loading ? <Loader2 className="is-spinning" /> : <UserRound />}
+                            {useAuthStore.getState().loading ? "Conectando" : "Iniciar sesion con Google"}
+                          </button>
+                        )}
                       </div>
                     </div>
                     {(settingsMessage || cloudSyncError) && (
