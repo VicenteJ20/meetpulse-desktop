@@ -26,9 +26,14 @@
       }
 
       .app-boot {
-        display: grid;
+        display: flex;
+        box-sizing: border-box;
         min-height: 100vh;
-        place-items: center;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 32px 24px 22px;
         color: #e0f2fe;
         background:
           linear-gradient(180deg, rgba(7, 18, 38, 0.99) 0%, rgba(9, 31, 59, 0.99) 46%, rgba(11, 52, 89, 0.98) 100%),
@@ -36,22 +41,46 @@
       }
 
       .app-boot__mark {
-        display: grid;
-        width: 44px;
-        height: 44px;
-        place-items: center;
-        border-radius: 8px;
-        color: #071226;
-        background: #7dd3fc;
-        font-size: 20px;
-        font-weight: 900;
+        width: 72px;
+        height: 72px;
+        flex: 0 0 auto;
+      }
+
+      .app-boot__title {
+        margin: 0;
+        color: #f8fbff;
+        font-size: 17px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .app-boot__credit {
+        margin: auto 0 0;
+        color: rgba(215, 241, 255, 0.66);
+        font-size: 11px;
+        font-weight: 700;
+        text-align: center;
+      }
+
+      .app-boot__credit a {
+        color: #7dd3fc;
+        text-decoration: none;
+      }
+
+      .app-boot__credit a:hover {
+        color: #bae6fd;
       }
     </style>
   </head>
   <body>
     <div id="root">
       <div class="app-boot" aria-label="Cargando Meetings Assistant">
-        <div class="app-boot__mark">M</div>
+        <img class="app-boot__mark" src="/src/assets/app-icon.png" alt="" />
+        <p class="app-boot__title">Meetings Assistant</p>
+        <p class="app-boot__credit">
+          Diseñado y desarrollado por
+          <a href="https://vicentejorquera.dev" target="_blank" rel="noreferrer">Vicente Jorquera</a>
+        </p>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

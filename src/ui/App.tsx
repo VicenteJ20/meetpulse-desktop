@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
+import appIcon from "../assets/app-icon.png";
 import {
   cleanupLocalRecording,
   defaultRecordingFileName,
@@ -677,7 +678,7 @@ export function App() {
           onPointerDown={handleTitlebarPointerDown}
         >
           <div className="window-brand" data-tauri-drag-region>
-            <span className="window-icon" />
+            <img className="window-icon" src={appIcon} alt="" data-tauri-drag-region />
             <span data-tauri-drag-region>Meetings Assistant</span>
           </div>
           <div
@@ -1357,7 +1358,7 @@ export function App() {
               void openExternalUrl("https://vicentejorquera.dev");
             }}
           >
-            Desarrollado por Vicente Jorquera
+            Diseñado y desarrollado por Vicente Jorquera
             <ExternalLink />
           </a>
           <button

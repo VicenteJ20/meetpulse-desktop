@@ -87,10 +87,10 @@ button {
 }
 
 .window-icon {
-  width: 10px;
-  height: 10px;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
-  background: #6f8fbd;
+  display: block;
 }
 
 .window-actions {
