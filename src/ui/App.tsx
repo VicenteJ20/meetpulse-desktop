@@ -43,6 +43,7 @@ import {
   isTauriRuntime,
   openExternalUrl,
   openRecordingFolder,
+  requestAnalysisRetry,
   requestTranscription,
   saveRecordingToLibrary,
   selectAudioDevice,
@@ -359,6 +360,7 @@ export function App() {
       : findCloudJobForRow(selectedRow, audioRows, cloudJobs, cloudJobByRecordingId[selectedRow.recording.id])
     : undefined;
   const selectedHasCloudArtifacts = Boolean(selectedCloudJob?.has_transcription || selectedCloudJob?.has_analysis);
+  const selectedCanRetryAnalysis = Boolean(selectedCloudJob?.has_transcription);
   const selectedArtifactContent = artifactTab === "analysis" ? selectedArtifacts.analysis : selectedArtifacts.transcription;
   const selectedArtifactBlocks = parseMarkdownBlocks(selectedArtifactContent);
   const expandedContentOpen = Boolean(selectedRow && expandedRecordingId === selectedRow.recording.id);
@@ -555,11 +557,14 @@ export function App() {
     const apiKey = transcriptionApiKey.trim();
     const audioPath = recordingAudioPath(row.recording);
     const audioSrc = audioPath ? toPlayableAudioSrc(audioPath) : "";
+    const cloudJob = selectedCloudJob;
+    const canRetryFromTranscription = Boolean(cloudJob?.has_transcription);
 
     setAnalysisError(null);
     setAnalysisMessage(null);
+    setArtifactError(null);
 
-    if (!endpoint) {
+    if (!normalizedBackendUrl) {
       setAnalysisError("Configura la URL del backend antes de solicitar el analisis.");
       return;
     }
@@ -569,7 +574,7 @@ export function App() {
       return;
     }
 
-    if (!audioSrc) {
+    if (!canRetryFromTranscription && !audioSrc) {
       setAnalysisError("Este audio no tiene archivo final disponible.");
       return;
     }
@@ -577,7 +582,16 @@ export function App() {
     setAnalysisSubmitting(true);
     try {
       let acceptedJobId: string | undefined;
-      if (isTauriRuntime) {
+      if (canRetryFromTranscription && cloudJob) {
+        await requestAnalysisRetry({
+          baseUrl: normalizedBackendUrl,
+          apiKey,
+          jobId: cloudJob.job_id,
+        });
+        acceptedJobId = cloudJob.job_id;
+        setSelectedArtifacts((current) => ({ ...current, analysis: null }));
+        setArtifactTab("analysis");
+      } else if (isTauriRuntime) {
         const result = await requestTranscription({
           recordingId: row.recording.id,
           endpoint,
@@ -610,9 +624,13 @@ export function App() {
         }
       }
 
-      setAnalysisMessage("Analisis solicitado. El servicio acepto el audio para procesarlo.");
+      setAnalysisMessage(
+        canRetryFromTranscription
+          ? "Reanalisis solicitado. El servicio volvera a generar el analisis desde la transcripcion guardada."
+          : "Analisis solicitado. El servicio acepto el audio para procesarlo.",
+      );
       await refreshCloudDashboard({ showMessage: false });
-      if (acceptedJobId) {
+      if (acceptedJobId && !canRetryFromTranscription) {
         if (row.source === "local") {
           await cleanupLocalRecording(row.recording.id);
           await refresh();
@@ -1158,18 +1176,21 @@ export function App() {
                           type="button"
                           className="analysis-button"
                           onClick={() => void handleRequestAnalysis(selectedRow)}
-                          disabled={!selectedCanRequestAnalysis || analysisSubmitting || selectedHasCloudArtifacts}
+                          disabled={analysisSubmitting || (!selectedCanRequestAnalysis && !selectedCanRetryAnalysis)}
                           title={
-                            selectedHasCloudArtifacts
-                              ? "Este audio ya tiene contenido cloud disponible"
+                            selectedCanRetryAnalysis
+                              ? "Volver a generar el analisis desde la transcripcion guardada"
                               : selectedCanRequestAnalysis
                                 ? "Solicitar analisis"
-                                : "Clasifica el audio antes de solicitar analisis"
+                                : "Clasifica el audio o vincula una transcripcion antes de solicitar analisis"
                           }
                         >
                           {analysisSubmitting ? <Loader2 className="is-spinning" /> : <Sparkles />}
-                          {analysisSubmitting ? "Solicitando" : selectedHasCloudArtifacts ? "Contenido disponible" : "Solicitar analisis"}
+                          {analysisSubmitting ? "Solicitando" : selectedCanRetryAnalysis ? "Reanalizar" : "Solicitar analisis"}
                         </button>
+                        {selectedHasCloudArtifacts && selectedCanRetryAnalysis && (
+                          <p className="analysis-hint">Usa reanalizar para regenerar solo el analisis; la transcripcion se mantiene intacta.</p>
+                        )}
                         {(analysisMessage || analysisError) && (
                           <p className={clsx("save-message details-save-message", analysisError && "is-error")}>
                             {analysisError ?? analysisMessage}

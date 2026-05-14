@@ -2115,6 +2115,14 @@ button {
   height: 15px;
 }
 
+.analysis-hint {
+  margin: -2px 0 0;
+  color: rgba(186, 230, 253, 0.62);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
 .artifact-section {
   border-top: 1px solid rgba(186, 230, 253, 0.12);
   padding-top: 12px;

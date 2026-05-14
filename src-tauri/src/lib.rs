@@ -45,6 +45,7 @@ pub fn run() {
             commands::select_audio_device,
             commands::select_microphone,
             commands::request_transcription,
+            commands::request_analysis_retry,
             commands::sync_cloud_dashboard,
             commands::get_cloud_job_artifacts
         ])

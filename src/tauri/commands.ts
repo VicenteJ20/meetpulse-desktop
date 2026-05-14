@@ -77,6 +77,13 @@ export type CloudJobArtifacts = {
   analysis?: string | null;
 };
 
+export type AnalysisRetryResult = {
+  accepted: boolean;
+  message: string;
+  job_id: string;
+  status: string;
+};
+
 let mockSnapshot: RecorderSnapshot = {
   status: "idle",
   recording_id: null,
@@ -271,6 +278,32 @@ export function requestTranscription({
   return invoke("request_transcription", { recordingId, endpoint, apiKey, client, project, fileName, durationMs });
 }
 
+export async function requestAnalysisRetry({
+  baseUrl,
+  apiKey,
+  jobId,
+}: {
+  baseUrl: string;
+  apiKey: string;
+  jobId: string;
+}): Promise<AnalysisRetryResult> {
+  if (!isTauriRuntime) {
+    const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/v1/jobs/${jobId}/analysis/retry`, {
+      method: "POST",
+      headers: {
+        "X-API-Key": apiKey,
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) throw new Error(await fetchResponseErrorMessage(response));
+
+    return response.json();
+  }
+
+  return invoke("request_analysis_retry", { baseUrl, apiKey, jobId });
+}
+
 export async function syncCloudDashboard({
   baseUrl,
   apiKey,
@@ -339,6 +372,19 @@ async function fetchJsonWithApiKey(url: string, apiKey: string): Promise<unknown
   }
 
   return response.json();
+}
+
+async function fetchResponseErrorMessage(response: Response): Promise<string> {
+  const fallback = `El backend respondio ${response.status}.`;
+  try {
+    const payload = await response.json();
+    if (typeof payload?.detail === "string") return payload.detail;
+    if (typeof payload?.message === "string") return payload.message;
+    return fallback;
+  } catch {
+    const text = await response.text().catch(() => "");
+    return text.trim() || fallback;
+  }
 }
 
 async function fetchJobArtifactContent(

@@ -117,6 +117,14 @@ pub struct CloudJobArtifacts {
     pub analysis: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct AnalysisRetryResult {
+    pub accepted: bool,
+    pub message: String,
+    pub job_id: String,
+    pub status: String,
+}
+
 #[tauri::command]
 pub async fn save_recording_to_library(
     state: State<'_, AppState>,
@@ -218,6 +226,15 @@ pub async fn request_transcription(
 #[tauri::command]
 pub async fn sync_cloud_dashboard(base_url: String, api_key: String) -> Result<CloudDashboard, String> {
     sync_cloud_dashboard_request(&base_url, &api_key).map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn request_analysis_retry(
+    base_url: String,
+    api_key: String,
+    job_id: String,
+) -> Result<AnalysisRetryResult, String> {
+    request_analysis_retry_request(&base_url, &api_key, &job_id).map_err(to_message)
 }
 
 #[tauri::command]
@@ -497,7 +514,45 @@ fn get_job_artifact_content(
         .with_context(|| format!("artifact {artifact_type} sin content"))
 }
 
+fn request_analysis_retry_request(
+    base_url: &str,
+    api_key: &str,
+    job_id: &str,
+) -> anyhow::Result<AnalysisRetryResult> {
+    let endpoint = join_backend_path(base_url, &format!("/v1/jobs/{job_id}/analysis/retry"))?;
+    let payload = send_json_post_request(&endpoint, api_key)?;
+    Ok(AnalysisRetryResult {
+        accepted: payload
+            .get("accepted")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        message: payload
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        job_id: payload
+            .get("job_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(job_id)
+            .to_string(),
+        status: payload
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("analyzing")
+            .to_string(),
+    })
+}
+
 fn send_json_get_request(endpoint: &str, api_key: &str) -> anyhow::Result<serde_json::Value> {
+    send_json_request("GET", endpoint, api_key)
+}
+
+fn send_json_post_request(endpoint: &str, api_key: &str) -> anyhow::Result<serde_json::Value> {
+    send_json_request("POST", endpoint, api_key)
+}
+
+fn send_json_request(method: &str, endpoint: &str, api_key: &str) -> anyhow::Result<serde_json::Value> {
     let target = parse_http_endpoint(endpoint)?;
     let mut stream = TcpStream::connect((&*target.host, target.port))
         .with_context(|| format!("connecting to {}:{}", target.host, target.port))?;
@@ -506,7 +561,8 @@ fn send_json_get_request(endpoint: &str, api_key: &str) -> anyhow::Result<serde_
 
     write!(
         stream,
-        "GET {} HTTP/1.1\r\nHost: {}\r\nX-API-Key: {}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
+        "{} {} HTTP/1.1\r\nHost: {}\r\nX-API-Key: {}\r\nAccept: application/json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        method,
         target.path,
         target.host_header,
         api_key
