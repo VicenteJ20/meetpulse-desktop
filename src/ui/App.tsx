@@ -202,9 +202,9 @@ export function App() {
 
   useEffect(() => {
     if (isWidgetWindow) return;
-    if (!normalizeBackendUrl(backendUrl) || !transcriptionApiKey.trim()) return;
+    if (!authState?.is_authenticated) return;
     void refreshCloudDashboard({ showMessage: false });
-  }, [backendUrl, isWidgetWindow, transcriptionApiKey]);
+  }, [authState?.is_authenticated, isWidgetWindow]);
 
   useEffect(() => {
     let cancelled = false;
