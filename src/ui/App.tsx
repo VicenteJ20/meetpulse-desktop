@@ -10,6 +10,7 @@ import {
   Eye,
   ExternalLink,
   FileAudio,
+  FileText,
   FolderOpen,
   History,
   Loader2,
@@ -955,55 +956,74 @@ export function App() {
 
                   <div className="content-grid">
                 {expandedContentOpen && selectedRow ? (
-                  <section className="audio-focus">
-                    <div className="audio-focus-top">
-                      <button type="button" onClick={() => setExpandedRecordingId(null)} aria-label="Volver a la lista" title="Volver a la lista">
+                <section className="audio-focus">
+                    {/* ── Top bar ───────────────────────────────────── */}
+                    <div className="audio-focus-bar">
+                      <button
+                        type="button"
+                        className="audio-focus-back"
+                        onClick={() => setExpandedRecordingId(null)}
+                        aria-label="Volver a la lista"
+                        title="Volver a la lista"
+                      >
                         <ChevronRight />
                       </button>
-                      <div>
-                        <p>{selectedRow.client} / {selectedRow.project}</p>
-                        <h2>{selectedRow.displayName}</h2>
+
+                      <div className="audio-focus-identity">
+                        <span className="audio-focus-crumb">{selectedRow.client} / {selectedRow.project}</span>
+                        <h2 className="audio-focus-title">{selectedRow.displayName}</h2>
                       </div>
-                      {selectedCloudJob && <span>{selectedCloudJob.status}</span>}
-                    </div>
-                    <div className="audio-focus-meta">
-                      <span>{formatDuration(audioDurationMs(selectedRow, audioDurationById))}</span>
-                      <span>{formatDateTime(selectedRow.recording.started_at)}</span>
-                      <span>{selectedCloudJob ? "Cloud vinculado" : "Sin job cloud"}</span>
-                    </div>
-                    <div className="content-switch-wrap">
-                      <div className="content-switch-head">
-                        <span>Contenido</span>
+
+                      <div className="audio-focus-meta-pills">
+                        <span>{formatDuration(audioDurationMs(selectedRow, audioDurationById))}</span>
+                        <span>{formatDateTime(selectedRow.recording.started_at)}</span>
+                        {selectedCloudJob && (
+                          <span className="is-cloud">
+                            {selectedCloudJob.has_transcription && selectedCloudJob.has_analysis
+                              ? "Transcripcion + Analisis"
+                              : selectedCloudJob.has_transcription
+                                ? "Solo transcripcion"
+                                : "Cloud vinculado"}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Tab switcher integrated in top bar */}
+                      <div className="audio-focus-tabs" role="tablist" aria-label="Contenido del job">
                         <button
                           type="button"
-                          className={clsx("copy-content-button", artifactCopyState === "copied" && "is-copied", artifactCopyState === "error" && "is-error")}
-                          onClick={() => void handleCopyArtifact()}
-                          disabled={!selectedArtifactContent?.trim()}
-                          title={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"}`}
-                          aria-label={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"}`}
-                        >
-                          {artifactCopyState === "copied" ? <CheckCircle2 /> : <Copy />}
-                          <span>{artifactCopyState === "copied" ? "Copiado" : artifactCopyState === "error" ? "Error" : "Copiar"}</span>
-                        </button>
-                      </div>
-                      <div className="content-switch" role="tablist" aria-label="Contenido del job">
-                        <button
-                          type="button"
-                          className={clsx(artifactTab === "transcription" && "is-selected", !selectedCloudJob?.has_transcription && "is-unavailable")}
+                          className={clsx(artifactTab === "transcription" && "is-active", !selectedCloudJob?.has_transcription && "is-unavailable")}
                           onClick={() => setArtifactTab("transcription")}
+                          aria-selected={artifactTab === "transcription"}
                         >
+                          <FileText size={13} />
                           Transcripcion
                         </button>
                         <button
                           type="button"
-                          className={clsx(artifactTab === "analysis" && "is-selected", !selectedCloudJob?.has_analysis && "is-unavailable")}
+                          className={clsx(artifactTab === "analysis" && "is-active", !selectedCloudJob?.has_analysis && "is-unavailable")}
                           onClick={() => setArtifactTab("analysis")}
+                          aria-selected={artifactTab === "analysis"}
                         >
+                          <Sparkles size={13} />
                           Analisis
                         </button>
                       </div>
+
+                      <button
+                        type="button"
+                        className={clsx("audio-focus-copy", artifactCopyState === "copied" && "is-copied", artifactCopyState === "error" && "is-error")}
+                        onClick={() => void handleCopyArtifact()}
+                        disabled={!selectedArtifactContent?.trim()}
+                        title={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"}`}
+                        aria-label={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"}`}
+                      >
+                        {artifactCopyState === "copied" ? <CheckCircle2 size={15} /> : <Copy size={15} />}
+                      </button>
                     </div>
-                    <div className="markdown-stage">
+
+                    {/* ── Content area ──────────────────────────────── */}
+                    <div className="markdown-stage" data-tab={artifactTab}>
                       {artifactLoading ? (
                         <div className="lyrics-empty"><Loader2 className="is-spinning" /> Cargando contenido</div>
                       ) : cloudSyncing && !selectedCloudJob ? (
@@ -1013,7 +1033,9 @@ export function App() {
                       ) : cloudSyncError && !selectedCloudJob ? (
                         <div className="lyrics-empty is-error">{cloudSyncError}</div>
                       ) : selectedArtifactBlocks.length > 0 ? (
-                        selectedArtifactBlocks.map((block, index) => <MarkdownBlock key={`${artifactTab}-${index}`} block={block} />)
+                        <div className={clsx("markdown-body", artifactTab === "transcription" && "is-transcript")}>
+                          {selectedArtifactBlocks.map((block, index) => <MarkdownBlock key={`${artifactTab}-${index}`} block={block} tab={artifactTab} />)}
+                        </div>
                       ) : (
                         <div className="lyrics-empty">
                           {selectedCloudJob ? "Contenido no disponible para este job." : "Sin contenido cloud asociado a este audio."}
@@ -1068,6 +1090,24 @@ export function App() {
                         <div>
                           <p>Audio seleccionado</p>
                           <h2>{selectedRow.displayName}</h2>
+                        </div>
+                        <div className="details-head-badges">
+                          {selectedCloudJob && (
+                            <>
+                              <span
+                                className={clsx("cloud-badge", selectedCloudJob.has_transcription && "is-available")}
+                                title={selectedCloudJob.has_transcription ? "Transcripcion disponible" : "Sin transcripcion"}
+                              >
+                                <FileText />
+                              </span>
+                              <span
+                                className={clsx("cloud-badge", selectedCloudJob.has_analysis && "is-available")}
+                                title={selectedCloudJob.has_analysis ? "Analisis disponible" : "Sin analisis"}
+                              >
+                                <Sparkles />
+                              </span>
+                            </>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -1125,25 +1165,28 @@ export function App() {
                         </div>
                       </div>
 
-                      <div className="organize-actions dashboard-actions">
-                        <button type="button" onClick={() => void openRecordingFolder(selectedRow.recording.id)} disabled={saving || selectedRow.source === "cloud"}>
-                          <FolderOpen />
-                          Abrir
+                      <div className="details-actions">
+                        <button type="button" className="details-action-btn" onClick={() => void openRecordingFolder(selectedRow.recording.id)} disabled={saving || selectedRow.source === "cloud"}>
+                          <FolderOpen size={15} />
+                          Abrir archivo
                         </button>
-                        <button type="button" className="save-strong" onClick={() => void handleSave(selectedRow.recording.id, false)} disabled={saving || selectedRow.source === "cloud"}>
-                          <Save />
-                          Guardar biblioteca
+                        <button type="button" className="details-action-btn is-primary" onClick={() => void handleSave(selectedRow.recording.id, false)} disabled={saving || selectedRow.source === "cloud"}>
+                          <Save size={15} />
+                          Guardar
                         </button>
-                        <button type="button" className="draft-strong" onClick={() => void handleSave(selectedRow.recording.id, true)} disabled={saving || selectedRow.source === "cloud"}>
-                          <ChevronRight />
+                        <button type="button" className="details-action-btn is-success" onClick={() => void handleSave(selectedRow.recording.id, true)} disabled={saving || selectedRow.source === "cloud"}>
+                          <ChevronRight size={15} />
                           Drafts
                         </button>
                       </div>
 
+                      {(savedPath || saveError) && (
+                        <p className={clsx("save-message details-save-message", saveError && "is-error")}>
+                          {saveError ?? `Guardado en ${savedPath}`}
+                        </p>
+                      )}
+
                       <div className="details-section analysis-section">
-                        <div className="details-section-title">
-                          <span>Analisis</span>
-                        </div>
                         <button
                           type="button"
                           className="analysis-button"
@@ -1157,45 +1200,15 @@ export function App() {
                                 : "Clasifica el audio o vincula una transcripcion antes de solicitar analisis"
                           }
                         >
-                          {analysisSubmitting ? <Loader2 className="is-spinning" /> : <Sparkles />}
-                          {analysisSubmitting ? "Solicitando" : selectedCanRetryAnalysis ? "Reanalizar" : "Solicitar analisis"}
+                          {analysisSubmitting ? <Loader2 className="is-spinning" /> : <Sparkles size={16} />}
+                          {analysisSubmitting ? "Solicitando..." : selectedCanRetryAnalysis ? "Reanalizar" : "Solicitar analisis"}
                         </button>
-                        {selectedHasCloudArtifacts && selectedCanRetryAnalysis && (
-                          <p className="analysis-hint">Usa reanalizar para regenerar solo el analisis; la transcripcion se mantiene intacta.</p>
-                        )}
                         {(analysisMessage || analysisError) && (
                           <p className={clsx("save-message details-save-message", analysisError && "is-error")}>
                             {analysisError ?? analysisMessage}
                           </p>
                         )}
                       </div>
-
-                      <div className="details-section artifact-section compact-artifact-section">
-                        <div className="details-section-title">
-                          <span>Contenido cloud</span>
-                          {selectedCloudJob && <strong>{selectedCloudJob.status}</strong>}
-                        </div>
-                        {selectedCloudJob ? (
-                          <div className="cloud-availability">
-                            <span className={clsx(selectedCloudJob.has_transcription && "is-available")}>
-                              <CheckCircle2 />
-                              Transcripcion
-                            </span>
-                            <span className={clsx(selectedCloudJob.has_analysis && "is-available")}>
-                              <CheckCircle2 />
-                              Analisis
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="lyrics-empty">Sin job cloud asociado a este audio.</div>
-                        )}
-                      </div>
-
-                      {(savedPath || saveError) && (
-                        <p className={clsx("save-message details-save-message", saveError && "is-error")}>
-                          {saveError ?? `Guardado en ${savedPath}`}
-                        </p>
-                      )}
                     </>
                   ) : (
                     <div className="details-empty">
@@ -1507,12 +1520,21 @@ type MarkdownBlockData =
 type MarkdownInlinePart =
   | { type: "text"; value: string }
   | { type: "strong"; value: string }
+  | { type: "em"; value: string }
   | { type: "code"; value: string };
 
-function MarkdownBlock({ block }: { block: MarkdownBlockData }) {
+function MarkdownBlock({ block, tab }: { block: MarkdownBlockData; tab?: string }) {
+  const isTranscript = tab === "transcription";
+
   if (block.type === "heading") {
-    const Tag = block.level <= 2 ? "h2" : "h3";
-    const className = clsx("markdown-heading", block.level <= 2 && "is-major", block.level >= 4 && "is-minor");
+    const Tag = block.level <= 2 ? "h2" : block.level <= 4 ? "h3" : "h4";
+    const className = clsx(
+      "markdown-heading",
+      block.level === 1 && "is-h1",
+      block.level === 2 && "is-h2",
+      block.level === 3 && "is-h3",
+      block.level >= 4 && "is-minor"
+    );
     return <Tag className={className}>{renderMarkdownInline(block.text)}</Tag>;
   }
 
@@ -1544,12 +1566,27 @@ function MarkdownBlock({ block }: { block: MarkdownBlockData }) {
     return <hr className="markdown-divider" />;
   }
 
+  // Paragraph — in transcript mode, detect [Speaker N] pattern
+  if (isTranscript) {
+    const speakerMatch = block.text.match(/^\[([^\]]+)\]\s*(.*)$/);
+    if (speakerMatch) {
+      return (
+        <p className="transcript-line">
+          <span className="transcript-speaker">{speakerMatch[1]}</span>
+          <span className="transcript-text">{renderMarkdownInline(speakerMatch[2])}</span>
+        </p>
+      );
+    }
+    return <p className="transcript-line transcript-plain">{renderMarkdownInline(block.text)}</p>;
+  }
+
   return <p className="markdown-paragraph">{renderMarkdownInline(block.text)}</p>;
 }
 
 function renderMarkdownInline(text: string): ReactNode {
   return parseMarkdownInline(text).map((part, index) => {
     if (part.type === "strong") return <strong key={`${part.value}-${index}`}>{part.value}</strong>;
+    if (part.type === "em") return <em key={`${part.value}-${index}`}>{part.value}</em>;
     if (part.type === "code") return <code key={`${part.value}-${index}`}>{part.value}</code>;
     return <span key={`${part.value}-${index}`}>{part.value}</span>;
   });
@@ -1941,7 +1978,8 @@ function stripMarkdownContainers(value: string): string {
 
 function parseMarkdownInline(value: string): MarkdownInlinePart[] {
   const parts: MarkdownInlinePart[] = [];
-  const pattern = /(\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`)/g;
+  // Order matters: bold (**) before italic (*)
+  const pattern = /(\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|`([^`]+)`)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -1950,10 +1988,12 @@ function parseMarkdownInline(value: string): MarkdownInlinePart[] {
       parts.push({ type: "text", value: value.slice(lastIndex, match.index) });
     }
 
-    if (match[4]) {
-      parts.push({ type: "code", value: match[4] });
-    } else {
+    if (match[6]) {
+      parts.push({ type: "code", value: match[6] });
+    } else if (match[2] ?? match[3]) {
       parts.push({ type: "strong", value: match[2] ?? match[3] ?? "" });
+    } else if (match[4] ?? match[5]) {
+      parts.push({ type: "em", value: match[4] ?? match[5] ?? "" });
     }
 
     lastIndex = pattern.lastIndex;
