@@ -2572,3 +2572,246 @@ button {
     display: flex;
   }
 }
+
+/* Login Screen */
+.login-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 16px;
+  padding-top: 48px;
+  background: #071226;
+}
+
+.login-screen.compact {
+  padding: 0;
+  padding-top: 0;
+  flex-direction: row;
+  height: 100vh;
+}
+
+.login-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  max-width: 360px;
+  width: 100%;
+  margin-top: 20px;
+}
+
+.login-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.login-logo img {
+  width: 64px;
+  height: 64px;
+}
+
+.login-logo h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fffef0;
+  margin: 0;
+}
+
+.login-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+}
+
+.login-content p {
+  font-size: 14px;
+  color: rgba(255, 254, 240, 0.7);
+  text-align: center;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.login-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fffef0;
+  background: #2563eb;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.login-button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.login-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.login-error {
+  font-size: 13px;
+  color: #f87171;
+  text-align: center;
+  margin: 0;
+}
+
+.login-footer {
+  font-size: 12px;
+  color: rgba(255, 254, 240, 0.4);
+}
+
+/* Compact Login Button */
+.compact-login-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fffef0;
+  background: #2563eb;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.compact-login-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.compact-login-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Google Auth Panel */
+.google-auth-panel {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.google-auth-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.google-auth-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.google-auth-head span {
+  font-size: 12px;
+  color: rgba(255, 254, 240, 0.5);
+}
+
+.google-auth-head strong {
+  font-size: 13px;
+  color: #fffef0;
+}
+
+.google-auth-head button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #fffef0;
+  background: #2563eb;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.google-auth-head button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.google-auth-head button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.google-auth-head button:has(> svg + span:empty) {
+  padding: 8px;
+}
+
+.google-auth-head button svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Open Widget Button */
+.open-widget-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fffef0;
+  background: #2563eb;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.open-widget-button:hover {
+  background: #1d4ed8;
+}
+
+.open-widget-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Recorder Launcher */
+.recorder-launcher {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fffef0;
+  background: #2563eb;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.recorder-launcher:hover {
+  background: #1d4ed8;
+}
+
+.recorder-launcher svg {
+  width: 20px;
+  height: 20px;
+}

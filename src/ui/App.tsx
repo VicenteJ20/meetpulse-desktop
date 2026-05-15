@@ -62,6 +62,7 @@ import {
 } from "../tauri/window";
 import { useAuthStore } from "../store/authStore";
 import { useRecorderStore } from "../store/recorderStore";
+import { LoginScreen } from "./Login";
 
 const bars = [
   0.52, 0.7, 0.38, 0.78, 0.66, 0.46, 0.3, 0.58, 0.24, 0.51, 0.72, 0.37, 0.44, 0.64, 0.29, 0.53, 0.4, 0.62,
@@ -708,6 +709,10 @@ export function App() {
     }
   }
 
+  if (!authState?.is_authenticated) {
+    return <LoginScreen />;
+  }
+
   return (
     <main className={clsx("widget-shell", compactView && "is-compact")}>
       {!compactView && (
@@ -800,19 +805,18 @@ export function App() {
               </div>
 
               <div className="quick-recorder">
-                <div>
-                  <p>{statusTitle(status)}</p>
-                  <span>{statusSubtitle(status)}</span>
-                </div>
-                <strong>{duration}</strong>
-                <div className="quick-controls">
-                  <button type="button" onClick={handlePrimary} disabled={isBusy} aria-label={isPaused ? "Reanudar" : isRecording ? "Pausar" : "Grabar"} title={isPaused ? "Reanudar" : isRecording ? "Pausar" : "Grabar"}>
-                    {isRecording ? <Pause /> : <Play />}
-                  </button>
-                  <button type="button" onClick={() => void stop()} disabled={isBusy || !isActive} aria-label="Finalizar" title="Finalizar">
-                    <Square />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="recorder-launcher"
+                  onClick={() => {
+                    if (isTauriRuntime) {
+                      showWindow("widget");
+                    }
+                  }}
+                >
+                  <Mic />
+                  <span>Abrir grabador</span>
+                </button>
               </div>
 
               <nav className="workspace-nav" aria-label="Secciones">
@@ -882,6 +886,20 @@ export function App() {
                 <div className="dashboard-tools">
                   {dashboardView === "library" ? (
                     <>
+                      <button
+                        type="button"
+                        className="open-widget-button"
+                        onClick={() => {
+                          if (isTauriRuntime) {
+                            showWindow("widget");
+                          }
+                        }}
+                        title="Abrir grabador"
+                        aria-label="Abrir grabador"
+                      >
+                        <Mic />
+                        <span>Abrir grabador</span>
+                      </button>
                       <label className="search-box" title="Buscar audio">
                         <Search />
                         <input value={audioQuery} onChange={(event) => setAudioQuery(event.currentTarget.value)} placeholder="Buscar audio, cliente o nota" />

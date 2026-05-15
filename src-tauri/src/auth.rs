@@ -8,8 +8,8 @@ use keyring::Entry;
 use oauth2::basic::BasicClient;
 use oauth2::reqwest::async_http_client;
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope,
-    TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
@@ -17,6 +17,7 @@ use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 
 const GOOGLE_CLIENT_ID: &str = "YOUR_GOOGLE_CLIENT_ID";
+const GOOGLE_CLIENT_SECRET: &str = "YOUR_GOOGLE_CLIENT_SECRET";
 const SERVICE_NAME: &str = "meetings-recorder";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,22 +45,24 @@ impl GoogleAuth {
         }
     }
 
-    pub async fn init(&self) -> anyhow::Result<()> {
+    pub async fn init(&self, port: u16) -> anyhow::Result<()> {
+        let redirect_url = format!("http://localhost:{}/callback", port);
         let client = BasicClient::new(
             ClientId::new(GOOGLE_CLIENT_ID.to_string()),
-            None,
+            Some(oauth2::ClientSecret::new(GOOGLE_CLIENT_SECRET.to_string())),
             AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())?,
             Some(TokenUrl::new(
                 "https://oauth2.googleapis.com/token".to_string(),
             )?),
-        );
+        )
+        .set_redirect_uri(RedirectUrl::new(redirect_url)?);
 
         let mut c = self.client.lock().await;
         *c = Some(client);
         Ok(())
     }
 
-    pub async fn get_auth_url(&self, port: u16) -> anyhow::Result<(String, CsrfToken, PkceCodeVerifier)> {
+    pub async fn get_auth_url(&self) -> anyhow::Result<(String, CsrfToken, PkceCodeVerifier)> {
         let client = self.client.lock().await;
         let client = client.as_ref().context("auth no inicializado")?;
 
@@ -69,33 +72,38 @@ impl GoogleAuth {
             .authorize_url(CsrfToken::new_random)
             .add_scope(Scope::new("email".to_string()))
             .add_scope(Scope::new("profile".to_string()))
-            .set_pkce_challenge(pkce_challenge);
+            .set_pkce_challenge(pkce_challenge)
+            .add_extra_param("access_type", "offline")
+            .add_extra_param("prompt", "consent");
 
         let (url, csrf_state) = auth_url.url();
 
-        let url = format!(
-            "{}&access_type=offline&prompt=consent&redirect_uri=http://localhost:{}/callback",
-            url, port
-        );
+        let url_str = url.to_string();
 
-        tracing::info!("URL de autorización: {}", url);
+        tracing::info!("URL de autorización: {}", url_str);
 
-        Ok((url, csrf_state, pkce_verifier))
+        Ok((url_str, csrf_state, pkce_verifier))
     }
 
     pub async fn start_oauth_flow(&self, app: AppHandle) -> anyhow::Result<AuthState> {
-        self.init().await?;
-
         let port = Self::find_available_port()?;
-        let (auth_url, _csrf_state, pkce_verifier) = self.get_auth_url(port).await?;
+        tracing::info!("Puerto seleccionado: {}", port);
+
+        self.init(port).await?;
+
+        let (auth_url, _csrf_state, pkce_verifier) = self.get_auth_url().await?;
+        tracing::info!("Abriendo navegador con URL de OAuth");
 
         app.opener()
             .open_url(&auth_url, None::<String>)
             .map_err(|e| anyhow::anyhow!("no se pudo abrir navegador: {}", e))?;
 
+        tracing::info!("Esperando callback en puerto {}...", port);
         let code = Self::wait_for_callback(port).await?;
+        tracing::info!("Código recibido, intercambiando por tokens");
 
         let tokens = self.exchange_code_for_tokens(code, pkce_verifier).await?;
+        tracing::info!("Tokens recibidos, guardando...");
 
         self.save_tokens(&tokens)?;
 
@@ -110,14 +118,21 @@ impl GoogleAuth {
     fn find_available_port() -> anyhow::Result<u16> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let addr = listener.local_addr()?;
+        drop(listener);
+        std::thread::sleep(std::time::Duration::from_millis(100));
         Ok(addr.port())
     }
 
     async fn wait_for_callback(port: u16) -> anyhow::Result<String> {
         use std::io::Read;
 
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", port))?;
-        listener.set_nonblocking(true)?;
+        let addr = format!("127.0.0.1:{}", port);
+        tracing::info!("Esperando callback en {}", addr);
+
+        let listener = TcpListener::bind(&addr).map_err(|e| {
+            tracing::error!("Error al bindear listener en {}: {}", addr, e);
+            anyhow::anyhow!("error bindeando listener: {}", e)
+        })?;
 
         let timeout = Duration::from_secs(120);
         let start = std::time::Instant::now();
@@ -127,29 +142,49 @@ impl GoogleAuth {
                 bail!("tiempo de espera agotado para callback de OAuth");
             }
 
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 2048];
-                if let Ok(n) = stream.read(&mut buf) {
-                    let request = String::from_utf8_lossy(&buf[..n]);
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    tracing::info!("Conexión recibida");
+                    let mut buf = [0u8; 4096];
+                    match stream.read(&mut buf) {
+                        Ok(n) if n > 0 => {
+                            let request = String::from_utf8_lossy(&buf[..n]);
+                            tracing::info!("Request: {}", &request[..request.len().min(200)]);
 
-                    if let Some(query) = request.split("GET ").nth(1) {
-                        if let Some(path) = query.split_whitespace().next() {
-                            if path.starts_with("/callback?") {
-                                let code = Self::extract_param(path, "code");
+                            if let Some(query) = request.split("GET ").nth(1) {
+                                if let Some(path) = query.split_whitespace().next() {
+                                    if path.starts_with("/callback?") {
+                                        let code = Self::extract_param(path, "code");
+                                        tracing::info!("Código extraído: {:?}", code);
 
-                                let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><body><h1>Autenticación exitosa. Puedes cerrar esta pestaña.</h1></body></html>";
-                                let _ = stream.write_all(response.as_bytes());
+                                        let html_content = include_str!("oauth_success.html");
+                                        let response = format!(
+                                            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{}",
+                                            html_content
+                                        );
+                                        let _ = stream.write_all(response.as_bytes());
 
-                                if let Some(code) = code {
-                                    return Ok(code);
+                                        if let Some(code) = code {
+                                            return Ok(code);
+                                        }
+                                    }
                                 }
                             }
                         }
+                        Ok(_) => tracing::warn!("Conexión cerrada sin datos"),
+                        Err(e) => tracing::error!("Error leyendo stream: {}", e),
                     }
                 }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    continue;
+                }
+                Err(e) => {
+                    tracing::error!("Error aceptando conexión: {}", e);
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    continue;
+                }
             }
-
-            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -173,12 +208,17 @@ impl GoogleAuth {
         let client = self.client.lock().await;
         let client = client.as_ref().context("auth no inicializado")?;
 
+        tracing::info!("Intercambiando código por tokens...");
         let token_result = client
             .exchange_code(AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
             .request_async(async_http_client)
             .await
-            .map_err(|e| anyhow::anyhow!("error intercambiando código por tokens: {}", e))?;
+            .map_err(|e| {
+                let err_str = format!("{:?}", e);
+                tracing::error!("Error al intercambiar código: {}", err_str);
+                anyhow::anyhow!("error intercambiando código por tokens: {}", err_str)
+            })?;
 
         let access_token = token_result.access_token().secret().to_string();
         let refresh_token = token_result
