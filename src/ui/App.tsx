@@ -618,7 +618,7 @@ export function App() {
         setActiveAudioId(acceptedJobId);
       }
     } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : "No se pudo solicitar el analisis.");
+      setAnalysisError(error instanceof Error ? error.message : String(error));
     } finally {
       setAnalysisSubmitting(false);
     }
@@ -659,7 +659,7 @@ export function App() {
       setCloudSyncedAt(new Date().toISOString());
       if (showMessage) setSettingsMessage("Sincronizacion completada.");
     } catch (error) {
-      setCloudSyncError(error instanceof Error ? error.message : "No se pudo sincronizar con la nube.");
+      setCloudSyncError(error instanceof Error ? error.message : String(error));
     } finally {
       setCloudSyncing(false);
     }
