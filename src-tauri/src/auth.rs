@@ -348,17 +348,23 @@ impl GoogleAuth {
             .map_err(|e| anyhow::anyhow!("error calculando tiempo: {}", e))?
             .as_secs() as i64;
 
+        // Still valid for more than 5 minutes — return as-is
         if tokens.expires_at - now > 300 {
             return Ok(Some(tokens));
         }
 
         if tokens.refresh_token.is_empty() {
+            tracing::warn!("No hay refresh token guardado; el usuario debe re-autenticarse");
             return Ok(None);
         }
 
+        tracing::info!("Access token expirado, renovando con refresh token...");
+
         let client = reqwest::Client::new();
+        // client_secret is required by Google for desktop OAuth apps
         let params = [
             ("client_id", GOOGLE_CLIENT_ID),
+            ("client_secret", GOOGLE_CLIENT_SECRET),
             ("refresh_token", &tokens.refresh_token),
             ("grant_type", "refresh_token"),
         ];
@@ -368,7 +374,25 @@ impl GoogleAuth {
             .form(&params)
             .send()
             .await
-            .map_err(|e| anyhow::anyhow!("error refresh token: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("error enviando refresh request: {}", e))?;
+
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<sin cuerpo>".to_string());
+
+        if !status.is_success() {
+            tracing::error!("Refresh token falló con status {}: {}", status, &body[..body.len().min(300)]);
+            // Google returns 400 for expired/revoked refresh tokens (invalid_grant).
+            // Clear the stored credentials so the app can prompt for a fresh login
+            // instead of silently looping on every startup.
+            if status.as_u16() == 400 || status.as_u16() == 401 {
+                tracing::warn!("Credenciales revocadas por Google. Limpiando tokens guardados para forzar re-login.");
+                let _ = self.delete_tokens();
+            }
+            return Ok(None);
+        }
 
         #[derive(Deserialize)]
         struct RefreshResponse {
@@ -377,10 +401,8 @@ impl GoogleAuth {
             id_token: Option<String>,
         }
 
-        let refresh_response: RefreshResponse = response
-            .json()
-            .await
-            .map_err(|e| anyhow::anyhow!("error parseando refresh response: {}", e))?;
+        let refresh_response: RefreshResponse = serde_json::from_str(&body)
+            .map_err(|e| anyhow::anyhow!("error parseando refresh response: {} — body: {}", e, &body[..body.len().min(200)]))?;
 
         let new_expires_at = now + refresh_response.expires_in;
 
@@ -393,6 +415,7 @@ impl GoogleAuth {
         };
 
         self.save_tokens(&new_tokens)?;
+        tracing::info!("Token renovado correctamente, expira en {}s", refresh_response.expires_in);
 
         Ok(Some(new_tokens))
     }

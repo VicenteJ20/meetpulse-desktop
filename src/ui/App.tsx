@@ -507,6 +507,8 @@ export function App() {
   }
 
   function handleSelectRecording(row: AudioRow) {
+    // Close expanded view when switching to a different audio
+    setExpandedRecordingId(null);
     setSelectedRecordingId(row.recording.id);
     setActiveAudioId(row.recording.id);
     setSaveError(null);
@@ -520,6 +522,11 @@ export function App() {
   }
 
   async function handleOpenExpandedContent(row: AudioRow) {
+    // Toggle: if already open for this audio, close it
+    if (expandedRecordingId === row.recording.id) {
+      setExpandedRecordingId(null);
+      return;
+    }
     handleSelectRecording(row);
     setExpandedRecordingId(row.recording.id);
     setArtifactError(null);
@@ -830,6 +837,8 @@ export function App() {
                       onClick={() => {
                         setSelectedClient(client.name);
                         setSelectedProject(allProjects);
+                        setSelectedRecordingId(null);
+                        setExpandedRecordingId(null);
                       }}
                     >
                       <span>{client.name}</span>
@@ -940,7 +949,11 @@ export function App() {
                         key={project.name}
                         type="button"
                         className={clsx(selectedProject === project.name && "is-selected")}
-                        onClick={() => setSelectedProject(project.name)}
+                        onClick={() => {
+                          setSelectedProject(project.name);
+                          setSelectedRecordingId(null);
+                          setExpandedRecordingId(null);
+                        }}
                       >
                         <span>{project.name}</span>
                         <strong>{project.count}</strong>
