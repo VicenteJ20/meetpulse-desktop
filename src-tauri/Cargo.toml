@@ -18,11 +18,11 @@ anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 cpal = { version = "0.15", optional = true }
 directories = "5"
-keyring = "3"
+keyring = { version = "3", features = ["windows-native"] }
 oauth2 = { version = "4", features = ["reqwest", "rustls-tls"] }
 opus = { version = "0.3", optional = true }
 rand = "0.8"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "multipart"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
