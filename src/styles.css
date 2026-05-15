@@ -1,6 +1,6 @@
 :root {
-  color: #fffef0;
-  background: #071226;
+  color: var(--text-primary);
+  background: var(--bg-base);
   font-family: "Segoe UI", Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -19,12 +19,13 @@ body,
   min-width: 180px;
   min-height: 100vh;
   margin: 0;
-  background: #071226;
+  background: var(--bg-base);
+  color: var(--text-primary);
 }
 
 body {
   overflow: hidden;
-  background: #071226;
+  background: var(--bg-base);
 }
 
 button {
@@ -47,9 +48,7 @@ button {
   align-items: center;
   justify-content: center;
   padding: 0;
-  background:
-    linear-gradient(135deg, rgba(6, 16, 32, 0.99), rgba(10, 54, 92, 0.98) 62%, rgba(11, 96, 138, 0.97)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 26px);
+  background: var(--bg-panel);
 }
 
 .windows-titlebar {
@@ -62,8 +61,9 @@ button {
   height: 32px;
   align-items: center;
   justify-content: space-between;
-  color: rgba(229, 231, 235, 0.86);
-  background: #202124;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-light);
   cursor: move;
   user-select: none;
 }
@@ -106,17 +106,18 @@ button {
   height: 100%;
   place-items: center;
   border: 0;
-  color: rgba(229, 231, 235, 0.86);
+  color: var(--text-secondary);
   background: transparent;
 }
 
 .window-actions button:hover:not(.is-disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .window-actions button.is-active {
-  color: #7dd3fc;
-  background: rgba(125, 211, 252, 0.14);
+  color: var(--accent-primary);
+  background: var(--accent-subtle);
 }
 
 .window-actions button.close:hover {
@@ -143,26 +144,16 @@ button {
   flex: 1;
   flex-direction: column;
   overflow: hidden;
-  border: 0;
-  border-radius: 0;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
   padding: 28px 28px 18px;
-  color: #fffef0;
-  box-shadow: none;
-  background:
-    linear-gradient(180deg, rgba(7, 18, 38, 0.99) 0%, rgba(12, 45, 84, 0.97) 45%, rgba(22, 112, 184, 0.98) 100%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 28px);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
+  background: var(--bg-panel);
 }
 
 .recorder-card::after {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  content: "";
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) 0 0 / 34px 100%,
-    radial-gradient(circle at 50% 54%, rgba(99, 199, 255, 0.24), transparent 32%),
-    radial-gradient(circle at 50% 100%, rgba(13, 185, 214, 0.28), transparent 34%);
-  mix-blend-mode: screen;
+  display: none;
 }
 
 .recorder-header,
@@ -185,7 +176,7 @@ button {
 
 .recording-title {
   margin: 0;
-  color: #7dd3fc;
+  color: var(--text-primary);
   font-size: 23px;
   font-weight: 800;
   line-height: 1;
@@ -196,10 +187,10 @@ button {
   align-items: center;
   gap: 8px;
   margin-top: 10px;
-  color: rgba(215, 241, 255, 0.72);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 10px;
-  font-style: italic;
+  font-style: normal;
   font-weight: 700;
 }
 
@@ -217,9 +208,10 @@ button {
   width: 34px;
   height: 18px;
   flex: 0 0 auto;
-  border: 1px solid rgba(186, 230, 253, 0.28);
-  border-radius: 999px;
-  background: rgba(8, 20, 38, 0.62);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-pill);
+  background: var(--bg-hover);
+  transition: background 140ms ease, border-color 140ms ease;
 }
 
 .switch-track::after {
@@ -228,8 +220,8 @@ button {
   left: 3px;
   width: 10px;
   height: 10px;
-  border-radius: 999px;
-  background: rgba(224, 242, 254, 0.78);
+  border-radius: var(--radius-pill);
+  background: var(--text-secondary);
   content: "";
   transition:
     transform 140ms ease,
@@ -237,10 +229,15 @@ button {
     box-shadow 140ms ease;
 }
 
+.view-switch input:checked + .switch-track {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
 .view-switch input:checked + .switch-track::after {
   transform: translateX(16px);
-  background: #7dd3fc;
-  box-shadow: 0 0 10px rgba(125, 211, 252, 0.62);
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .recording-subtitle,
@@ -248,8 +245,8 @@ button {
 .control-label,
 .timeline-label {
   font-size: 10px;
-  font-style: italic;
-  color: rgba(255, 255, 255, 0.88);
+  font-style: normal;
+  color: var(--text-secondary);
 }
 
 .control-label {
@@ -271,17 +268,17 @@ button {
   align-items: center;
   gap: 8px;
   margin-top: 9px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 6px 9px;
-  color: rgba(215, 241, 255, 0.86);
-  background: rgba(8, 20, 38, 0.42);
+  color: var(--text-primary);
+  background: var(--bg-hover);
   overflow: hidden;
   white-space: nowrap;
 }
 
 .recording-file span {
   flex: 0 0 auto;
-  color: rgba(215, 241, 255, 0.6);
+  color: var(--text-muted);
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -289,7 +286,7 @@ button {
 .recording-file strong {
   min-width: 0;
   overflow: hidden;
-  color: #f8fbff;
+  color: var(--text-primary);
   font-weight: 700;
   text-overflow: ellipsis;
 }
@@ -305,9 +302,9 @@ button {
   display: grid;
   min-width: 0;
   gap: 5px;
-  color: rgba(215, 241, 255, 0.76);
+  color: var(--text-muted);
   font-size: 10px;
-  font-style: italic;
+  font-style: normal;
   font-weight: 800;
 }
 
@@ -327,11 +324,11 @@ button {
 .device-select select {
   min-width: 0;
   width: 100%;
-  border: 1px solid rgba(186, 230, 253, 0.14);
-  border-radius: 6px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
   padding: 6px 8px;
-  color: #f8fbff;
-  background: rgba(5, 18, 34, 0.66);
+  color: var(--text-primary);
+  background: var(--bg-hover);
   font-size: 10px;
   outline: 0;
 }
@@ -363,18 +360,17 @@ button {
   width: 10px;
   height: 10px;
   flex: 0 0 auto;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-pill);
+  background: var(--text-muted);
 }
 
 .compact-dot.is-live {
-  background: #38bdf8;
-  box-shadow: 0 0 18px rgba(56, 189, 248, 0.8);
+  background: var(--status-recording);
+  box-shadow: 0 0 12px var(--status-recording-glow);
 }
 
 .compact-dot.is-paused {
-  background: #ffffff;
+  background: var(--text-secondary);
 }
 
 .controls {
@@ -397,19 +393,22 @@ button {
   width: clamp(66px, 21vw, 78px);
   height: clamp(66px, 21vw, 78px);
   place-items: center;
-  border: 4px solid rgba(255, 255, 255, 0.96);
-  border-radius: 999px;
-  color: #fffef0;
-  background: rgba(7, 18, 38, 0.34);
+  border: 4px solid var(--border-light);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  background: var(--bg-base);
+  box-shadow: var(--shadow-sm);
   transition:
     transform 140ms ease,
     background 140ms ease,
+    border-color 140ms ease,
     opacity 140ms ease;
 }
 
 .control-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  background: rgba(125, 211, 252, 0.12);
+  transform: scale(1.05);
+  background: var(--bg-hover);
+  border-color: var(--border-medium);
 }
 
 .control-button:disabled {
@@ -430,8 +429,8 @@ button {
 .control-button.finish svg {
   width: 30px;
   height: 30px;
-  fill: #7dd3fc;
-  stroke: #7dd3fc;
+  fill: var(--status-recording);
+  stroke: var(--status-recording);
 }
 
 .waveform-panel {
@@ -441,10 +440,10 @@ button {
   gap: 10px;
   align-items: center;
   margin-top: 22px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px;
-  background: rgba(8, 20, 38, 0.86);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 1px var(--border-light);
 }
 
 .save-panel {
@@ -806,10 +805,8 @@ button {
   min-height: 0;
   flex: 1;
   grid-template-columns: 240px minmax(0, 1fr);
-  color: #f8fbff;
-  background:
-    linear-gradient(180deg, rgba(7, 18, 38, 0.99) 0%, rgba(9, 31, 59, 0.99) 46%, rgba(11, 52, 89, 0.98) 100%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 28px);
+  color: var(--text-primary);
+  background: var(--bg-base);
 }
 
 .library-sidebar,
@@ -824,9 +821,9 @@ button {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  border-right: 1px solid rgba(186, 230, 253, 0.12);
+  border-right: 1px solid var(--border-light);
   padding: 18px 14px 14px;
-  background: rgba(4, 12, 25, 0.9);
+  background: var(--bg-panel);
 }
 
 .sidebar-brand {
@@ -843,9 +840,9 @@ button {
   height: 38px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 8px;
-  color: #071226;
-  background: #7dd3fc;
+  border-radius: var(--radius-md);
+  color: var(--text-inverse);
+  background: var(--accent-primary);
 }
 
 .brand-mark svg,
@@ -877,7 +874,7 @@ button {
 .player-now small {
   display: block;
   overflow: hidden;
-  color: rgba(215, 241, 255, 0.62);
+  color: var(--text-secondary);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -886,10 +883,10 @@ button {
 .quick-recorder {
   display: grid;
   gap: 12px;
-  border: 1px solid rgba(186, 230, 253, 0.14);
-  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
   padding: 12px;
-  background: rgba(8, 20, 38, 0.72);
+  background: var(--bg-hover);
 }
 
 .quick-recorder p,
@@ -920,10 +917,10 @@ button {
 .details-head button {
   display: grid;
   place-items: center;
-  border: 1px solid rgba(186, 230, 253, 0.18);
-  border-radius: 8px;
-  color: #e0f2fe;
-  background: rgba(8, 20, 38, 0.72);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--bg-panel);
   cursor: pointer;
 }
 
@@ -934,7 +931,7 @@ button {
 .quick-controls button:hover:not(:disabled),
 .dashboard-tools button:hover,
 .details-head button:hover {
-  background: rgba(125, 211, 252, 0.16);
+  background: var(--bg-hover);
 }
 
 .quick-controls button:disabled {
@@ -961,9 +958,9 @@ button {
   align-items: center;
   gap: 9px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 9px 10px;
-  color: rgba(215, 241, 255, 0.72);
+  color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
   font-size: 12px;
@@ -973,9 +970,9 @@ button {
 
 .workspace-nav button:hover,
 .workspace-nav button.is-selected {
-  border-color: rgba(186, 230, 253, 0.14);
-  color: #fff;
-  background: rgba(125, 211, 252, 0.12);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .workspace-nav svg {
@@ -1017,9 +1014,9 @@ button {
   justify-content: space-between;
   gap: 10px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   padding: 9px 10px;
-  color: rgba(215, 241, 255, 0.72);
+  color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -1032,18 +1029,18 @@ button {
 }
 
 .client-nav-item strong {
-  color: rgba(186, 230, 253, 0.48);
+  color: var(--text-muted);
   font-size: 11px;
 }
 
 .client-nav-item:hover,
 .client-nav-item.is-selected {
-  color: #fff;
-  background: rgba(125, 211, 252, 0.12);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .client-nav-item.is-selected strong {
-  color: #7dd3fc;
+  color: var(--text-accent);
 }
 
 .developer-link {
