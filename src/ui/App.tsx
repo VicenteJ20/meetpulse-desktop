@@ -1907,6 +1907,7 @@ function normalizeRelativePathForMatch(value: string): string {
 function parseMarkdownBlocks(content?: string | null): MarkdownBlockData[] {
   if (!content) return [];
   const normalized = content.replace(/^---[\s\S]*?---\s*/m, "");
+  const withSpeakerBreaks = normalized.replace(/(\[Speaker\s+\d+\])/gi, "\n$1");
   const blocks: MarkdownBlockData[] = [];
   let listItems: string[] = [];
   let listOrdered = false;
@@ -1925,7 +1926,7 @@ function parseMarkdownBlocks(content?: string | null): MarkdownBlockData[] {
     }
   }
 
-  normalized.split(/\r?\n/).forEach((rawLine) => {
+  withSpeakerBreaks.split(/\r?\n/).forEach((rawLine) => {
     const line = rawLine.trim();
     if (!line) {
       flushParagraph();
@@ -1963,6 +1964,13 @@ function parseMarkdownBlocks(content?: string | null): MarkdownBlockData[] {
       flushParagraph();
       flushList();
       blocks.push({ type: "quote", text: stripMarkdownContainers(line.replace(/^>\s*/, "")) });
+      return;
+    }
+
+    if (/^\[Speaker\s+\d+\]/i.test(line)) {
+      flushParagraph();
+      flushList();
+      paragraphLines.push(stripMarkdownContainers(line));
       return;
     }
 
