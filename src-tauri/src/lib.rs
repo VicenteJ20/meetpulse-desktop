@@ -1,3 +1,4 @@
+mod api_client;
 mod app_state;
 mod audio;
 mod auth;

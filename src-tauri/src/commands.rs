@@ -1,9 +1,6 @@
 use std::{
     fs,
-    io::{Read, Write},
-    net::TcpStream,
     path::{Path, PathBuf},
-    time::Duration,
 };
 
 use anyhow::{bail, Context};
@@ -201,11 +198,26 @@ pub async fn get_cloud_job_artifacts(
     include_transcription: bool,
     include_analysis: bool,
 ) -> Result<CloudJobArtifacts, String> {
-    let config = get_backend_config();
     let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
         .ok_or("no hay token de autenticación")?;
-    get_cloud_job_artifacts_request(&config.base_url, &token.access_token, &job_id, include_transcription, include_analysis)
-        .map_err(to_message)
+        
+    let api = crate::api_client::ApiClient::new(token.access_token);
+    
+    let transcription = if include_transcription {
+        let payload = api.get_json(&format!("/v1/jobs/{job_id}/artifacts/transcription_md/content")).await.map_err(to_message)?;
+        Some(payload.get("content").and_then(|v| v.as_str()).unwrap_or_default().to_string())
+    } else {
+        None
+    };
+    
+    let analysis = if include_analysis {
+        let payload = api.get_json(&format!("/v1/jobs/{job_id}/artifacts/analysis_md/content")).await.map_err(to_message)?;
+        Some(payload.get("content").and_then(|v| v.as_str()).unwrap_or_default().to_string())
+    } else {
+        None
+    };
+
+    Ok(CloudJobArtifacts { transcription, analysis })
 }
 
 #[tauri::command]
@@ -232,7 +244,6 @@ pub async fn request_transcription(
     file_name: Option<String>,
     duration_ms: Option<u64>,
 ) -> Result<TranscriptionRequestResult, String> {
-    let config = get_backend_config();
     let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
         .ok_or("no hay token de autenticación")?;
 
@@ -244,23 +255,30 @@ pub async fn request_transcription(
         .unwrap_or_else(|| "audio.opus".to_string());
     let relative_path = transcription_relative_path(client, project);
     let source_duration_ms = duration_ms.or_else(|| state.storage.recording_duration_ms(&recording_id).ok().flatten());
-    send_transcription_request(
-        &config.base_url,
-        &token.access_token,
+    
+    let api = crate::api_client::ApiClient::new(token.access_token);
+    let (status, body) = api.upload_transcription(
         &source,
         &upload_file_name,
         &relative_path,
         source_duration_ms,
-    )
-    .map_err(to_message)
+    ).await.map_err(to_message)?;
+    
+    Ok(TranscriptionRequestResult { status, body })
 }
 
 #[tauri::command]
 pub async fn sync_cloud_dashboard(state: State<'_, AppState>) -> Result<CloudDashboard, String> {
-    let config = get_backend_config();
     let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
         .ok_or("no hay token de autenticación")?;
-    sync_cloud_dashboard_request(&config.base_url, &token.access_token).map_err(to_message)
+        
+    let api = crate::api_client::ApiClient::new(token.access_token);
+    
+    Ok(CloudDashboard {
+        clients: api.get_json("/v1/dashboard/clients").await.map_err(to_message)?,
+        projects: api.get_json("/v1/dashboard/projects").await.map_err(to_message)?,
+        jobs: api.get_json("/v1/jobs/?limit=100&offset=0").await.map_err(to_message)?,
+    })
 }
 
 #[tauri::command]
@@ -268,10 +286,33 @@ pub async fn request_analysis_retry(
     state: State<'_, AppState>,
     job_id: String,
 ) -> Result<AnalysisRetryResult, String> {
-    let config = get_backend_config();
     let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
         .ok_or("no hay token de autenticación")?;
-    request_analysis_retry_request(&config.base_url, &token.access_token, &job_id).map_err(to_message)
+        
+    let api = crate::api_client::ApiClient::new(token.access_token);
+    let payload = api.post_json(&format!("/v1/jobs/{job_id}/analysis/retry")).await.map_err(to_message)?;
+    
+    Ok(AnalysisRetryResult {
+        accepted: payload
+            .get("accepted")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        message: payload
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        job_id: payload
+            .get("job_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(&job_id)
+            .to_string(),
+        status: payload
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("analyzing")
+            .to_string(),
+    })
 }
 
 fn to_message(error: anyhow::Error) -> String {
@@ -419,273 +460,4 @@ fn copy_atomic(source: &Path, destination: &Path) -> anyhow::Result<()> {
     result
 }
 
-fn send_transcription_request(
-    endpoint: &str,
-    api_key: &str,
-    audio_path: &Path,
-    upload_file_name: &str,
-    relative_path: &str,
-    duration_ms: Option<u64>,
-) -> anyhow::Result<TranscriptionRequestResult> {
-    let target = parse_http_endpoint(endpoint)?;
-    let audio = fs::read(audio_path).with_context(|| format!("reading {}", audio_path.display()))?;
-    let file_name = multipart_file_name(upload_file_name);
-    let mime = match audio_path.extension().and_then(|extension| extension.to_str()) {
-        Some(extension) if extension.eq_ignore_ascii_case("mp3") => "audio/mpeg",
-        _ => "audio/ogg",
-    };
-    let boundary = format!("meetings-assistant-{}", uuid::Uuid::new_v4());
-    let mut body = Vec::new();
-    write!(
-        body,
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{file_name}\"\r\nContent-Type: {mime}\r\n\r\n"
-    )?;
-    body.extend_from_slice(&audio);
-    write!(
-        body,
-        "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"relative_path\"\r\n\r\n{relative_path}\r\n"
-    )?;
-    if let Some(duration_ms) = duration_ms.filter(|value| *value > 0) {
-        write!(
-            body,
-            "--{boundary}\r\nContent-Disposition: form-data; name=\"duration_ms\"\r\n\r\n{duration_ms}\r\n"
-        )?;
-    }
-    write!(body, "--{boundary}--\r\n")?;
 
-    let mut stream = TcpStream::connect((&*target.host, target.port))
-        .with_context(|| format!("connecting to {}:{}", target.host, target.port))?;
-    stream.set_read_timeout(Some(Duration::from_secs(60)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(60)))?;
-
-    write!(
-        stream,
-        "POST {} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nContent-Type: multipart/form-data; boundary={}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        target.path,
-        target.host_header,
-        api_key,
-        boundary,
-        body.len()
-    )?;
-    stream.write_all(&body)?;
-
-    let mut response = Vec::new();
-    stream.read_to_end(&mut response)?;
-    let response_text = String::from_utf8_lossy(&response);
-    let (head, body) = response_text
-        .split_once("\r\n\r\n")
-        .map_or((response_text.as_ref(), ""), |(head, body)| (head, body));
-    let status = head
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|status| status.parse::<u16>().ok())
-        .context("respuesta HTTP invalida del servicio de transcripcion")?;
-
-    if status != 202 {
-        bail!(
-            "el servicio respondio {status}: {}",
-            body.trim().lines().next().unwrap_or("sin detalle")
-        );
-    }
-
-    Ok(TranscriptionRequestResult {
-        status,
-        body: body.trim().to_string(),
-    })
-}
-
-fn sync_cloud_dashboard_request(base_url: &str, api_key: &str) -> anyhow::Result<CloudDashboard> {
-    Ok(CloudDashboard {
-        clients: send_json_get_request(&join_backend_path(base_url, "/v1/dashboard/clients")?, api_key)?,
-        projects: send_json_get_request(&join_backend_path(base_url, "/v1/dashboard/projects")?, api_key)?,
-        jobs: send_json_get_request(&join_backend_path(base_url, "/v1/jobs/?limit=100&offset=0")?, api_key)?,
-    })
-}
-
-fn get_cloud_job_artifacts_request(
-    base_url: &str,
-    api_key: &str,
-    job_id: &str,
-    include_transcription: bool,
-    include_analysis: bool,
-) -> anyhow::Result<CloudJobArtifacts> {
-    let transcription = if include_transcription {
-        Some(get_job_artifact_content(base_url, api_key, job_id, "transcription_md")?)
-    } else {
-        None
-    };
-    let analysis = if include_analysis {
-        Some(get_job_artifact_content(base_url, api_key, job_id, "analysis_md")?)
-    } else {
-        None
-    };
-
-    Ok(CloudJobArtifacts { transcription, analysis })
-}
-
-fn get_job_artifact_content(
-    base_url: &str,
-    api_key: &str,
-    job_id: &str,
-    artifact_type: &str,
-) -> anyhow::Result<String> {
-    let endpoint = join_backend_path(base_url, &format!("/v1/jobs/{job_id}/artifacts/{artifact_type}/content"))?;
-    let payload = send_json_get_request(&endpoint, api_key)?;
-    payload
-        .get("content")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
-        .with_context(|| format!("artifact {artifact_type} sin content"))
-}
-
-fn request_analysis_retry_request(
-    base_url: &str,
-    api_key: &str,
-    job_id: &str,
-) -> anyhow::Result<AnalysisRetryResult> {
-    let endpoint = join_backend_path(base_url, &format!("/v1/jobs/{job_id}/analysis/retry"))?;
-    let payload = send_json_post_request(&endpoint, api_key)?;
-    Ok(AnalysisRetryResult {
-        accepted: payload
-            .get("accepted")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false),
-        message: payload
-            .get("message")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("")
-            .to_string(),
-        job_id: payload
-            .get("job_id")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or(job_id)
-            .to_string(),
-        status: payload
-            .get("status")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("analyzing")
-            .to_string(),
-    })
-}
-
-fn send_json_get_request(endpoint: &str, api_key: &str) -> anyhow::Result<serde_json::Value> {
-    send_json_request("GET", endpoint, api_key)
-}
-
-fn send_json_post_request(endpoint: &str, api_key: &str) -> anyhow::Result<serde_json::Value> {
-    send_json_request("POST", endpoint, api_key)
-}
-
-fn send_json_request(method: &str, endpoint: &str, api_key: &str) -> anyhow::Result<serde_json::Value> {
-    let target = parse_http_endpoint(endpoint)?;
-    let mut stream = TcpStream::connect((&*target.host, target.port))
-        .with_context(|| format!("connecting to {}:{}", target.host, target.port))?;
-    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
-
-    write!(
-        stream,
-        "{} {} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nAccept: application/json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-        method,
-        target.path,
-        target.host_header,
-        api_key
-    )?;
-
-    let mut response = Vec::new();
-    stream.read_to_end(&mut response)?;
-    let response_text = String::from_utf8_lossy(&response);
-    let (head, body) = response_text
-        .split_once("\r\n\r\n")
-        .map_or((response_text.as_ref(), ""), |(head, body)| (head, body));
-    let status = head
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|status| status.parse::<u16>().ok())
-        .context("respuesta HTTP invalida del backend")?;
-
-    if !(200..300).contains(&status) {
-        bail!(
-            "el backend respondio {status}: {}",
-            body.trim().lines().next().unwrap_or("sin detalle")
-        );
-    }
-
-    serde_json::from_str(body.trim()).with_context(|| format!("parsing JSON from {endpoint}"))
-}
-
-fn join_backend_path(base_url: &str, path: &str) -> anyhow::Result<String> {
-    let base = base_url.trim().trim_end_matches('/');
-    if base.is_empty() {
-        bail!("falta URL del backend");
-    }
-
-    Ok(format!("{base}/{}", path.trim_start_matches('/')))
-}
-
-fn multipart_file_name(value: &str) -> String {
-    let sanitized = value
-        .chars()
-        .map(|character| match character {
-            '"' | '\r' | '\n' => '-',
-            character => character,
-        })
-        .collect::<String>();
-
-    if sanitized.trim().is_empty() {
-        "audio.opus".to_string()
-    } else {
-        sanitized
-    }
-}
-
-#[derive(Debug)]
-struct BackendConfig {
-    base_url: String,
-}
-
-fn get_backend_config() -> BackendConfig {
-    #[cfg(debug_assertions)]
-    let base_url = "http://localhost:8000".to_string();
-
-    #[cfg(not(debug_assertions))]
-    let base_url = "https://api.tu-backend-produccion.com".to_string();
-
-    BackendConfig {
-        base_url,
-    }
-}
-
-struct HttpEndpoint {
-    host: String,
-    host_header: String,
-    port: u16,
-    path: String,
-}
-
-fn parse_http_endpoint(endpoint: &str) -> anyhow::Result<HttpEndpoint> {
-    let endpoint = endpoint.trim();
-    let without_scheme = endpoint
-        .strip_prefix("http://")
-        .context("solo se soportan endpoints http:// locales por ahora")?;
-    let (host_port, path) = without_scheme
-        .split_once('/')
-        .map_or((without_scheme, "/"), |(host_port, path)| (host_port, path));
-    let (host, port) = match host_port.rsplit_once(':') {
-        Some((host, port)) => (host.to_string(), port.parse::<u16>().context("puerto HTTP invalido")?),
-        None => (host_port.to_string(), 80),
-    };
-
-    if host.trim().is_empty() {
-        bail!("host HTTP invalido");
-    }
-
-    Ok(HttpEndpoint {
-        host,
-        host_header: host_port.to_string(),
-        port,
-        path: format!("/{}", path.trim_start_matches('/')),
-    })
-}
