@@ -26,6 +26,7 @@ pub struct AuthTokens {
     pub refresh_token: String,
     pub expires_at: i64,
     pub email: Option<String>,
+    pub id_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +71,7 @@ impl GoogleAuth {
 
         let auth_url = client
             .authorize_url(CsrfToken::new_random)
+            .add_scope(Scope::new("openid".to_string()))
             .add_scope(Scope::new("email".to_string()))
             .add_scope(Scope::new("profile".to_string()))
             .set_pkce_challenge(pkce_challenge)
@@ -102,7 +104,7 @@ impl GoogleAuth {
         let code = Self::wait_for_callback(port).await?;
         tracing::info!("Código recibido, intercambiando por tokens");
 
-        let tokens = self.exchange_code_for_tokens(code, pkce_verifier).await?;
+        let tokens = self.exchange_code_for_tokens(code, pkce_verifier, port).await?;
         tracing::info!("Tokens recibidos, guardando...");
 
         self.save_tokens(&tokens)?;
@@ -204,39 +206,52 @@ impl GoogleAuth {
         &self,
         code: String,
         pkce_verifier: PkceCodeVerifier,
+        port: u16,
     ) -> anyhow::Result<AuthTokens> {
-        let client = self.client.lock().await;
-        let client = client.as_ref().context("auth no inicializado")?;
-
         tracing::info!("Intercambiando código por tokens...");
-        let token_result = client
-            .exchange_code(AuthorizationCode::new(code))
-            .set_pkce_verifier(pkce_verifier)
-            .request_async(async_http_client)
-            .await
-            .map_err(|e| {
-                let err_str = format!("{:?}", e);
-                tracing::error!("Error al intercambiar código: {}", err_str);
-                anyhow::anyhow!("error intercambiando código por tokens: {}", err_str)
-            })?;
+        
+        let req_client = reqwest::Client::new();
+        let params = [
+            ("client_id", GOOGLE_CLIENT_ID),
+            ("client_secret", GOOGLE_CLIENT_SECRET),
+            ("code", &code),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", &format!("http://localhost:{}/callback", port)),
+            ("code_verifier", pkce_verifier.secret()),
+        ];
 
-        let access_token = token_result.access_token().secret().to_string();
-        let refresh_token = token_result
-            .refresh_token()
-            .map(|t| t.secret().to_string())
-            .unwrap_or_default();
-        let expires_in = token_result.expires_in().map(|d| d.as_secs()).unwrap_or(3600);
+        let response = req_client
+            .post("https://oauth2.googleapis.com/token")
+            .form(&params)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("error request token: {}", e))?;
+
+        #[derive(Deserialize, Debug)]
+        struct TokenResponsePayload {
+            access_token: String,
+            refresh_token: Option<String>,
+            expires_in: i64,
+            id_token: Option<String>,
+        }
+
+        let token_result: TokenResponsePayload = response
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("error parseando respuesta: {}", e))?;
+
         let expires_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| anyhow::anyhow!("error calculando tiempo: {}", e))?
             .as_secs() as i64
-            + expires_in as i64;
+            + token_result.expires_in;
 
         Ok(AuthTokens {
-            access_token,
-            refresh_token,
+            access_token: token_result.access_token,
+            refresh_token: token_result.refresh_token.unwrap_or_default(),
             expires_at,
             email: None,
+            id_token: token_result.id_token,
         })
     }
 
@@ -263,27 +278,47 @@ impl GoogleAuth {
     }
 
     pub fn save_tokens(&self, tokens: &AuthTokens) -> anyhow::Result<()> {
-        let entry = Entry::new(SERVICE_NAME, "google_tokens")
-            .map_err(|e| anyhow::anyhow!("error creando entry: {}", e))?;
+        let entry_main = Entry::new(SERVICE_NAME, "google_tokens")
+            .map_err(|e| anyhow::anyhow!("error creando entry principal: {}", e))?;
+            
+        let entry_id = Entry::new(SERVICE_NAME, "google_id_token")
+            .map_err(|e| anyhow::anyhow!("error creando entry id_token: {}", e))?;
 
-        let json = serde_json::to_string(tokens)
+        let mut tokens_to_save = tokens.clone();
+        let id_token = tokens_to_save.id_token.take();
+
+        let json = serde_json::to_string(&tokens_to_save)
             .map_err(|e| anyhow::anyhow!("error serializando tokens: {}", e))?;
 
-        entry
+        entry_main
             .set_password(&json)
             .map_err(|e| anyhow::anyhow!("error guardando tokens: {}", e))?;
+
+        if let Some(id_tok) = id_token {
+            let _ = entry_id.set_password(&id_tok);
+        } else {
+            let _ = entry_id.delete_credential();
+        }
 
         Ok(())
     }
 
     pub fn load_tokens(&self) -> anyhow::Result<Option<AuthTokens>> {
-        let entry = Entry::new(SERVICE_NAME, "google_tokens")
-            .map_err(|e| anyhow::anyhow!("error creando entry: {}", e))?;
+        let entry_main = Entry::new(SERVICE_NAME, "google_tokens")
+            .map_err(|e| anyhow::anyhow!("error creando entry principal: {}", e))?;
+            
+        let entry_id = Entry::new(SERVICE_NAME, "google_id_token")
+            .map_err(|e| anyhow::anyhow!("error creando entry id_token: {}", e))?;
 
-        match entry.get_password() {
+        match entry_main.get_password() {
             Ok(json) => {
-                let tokens: AuthTokens =
+                let mut tokens: AuthTokens =
                     serde_json::from_str(&json).map_err(|e| anyhow::anyhow!("error parseando tokens: {}", e))?;
+                
+                if let Ok(id_token) = entry_id.get_password() {
+                    tokens.id_token = Some(id_token);
+                }
+
                 Ok(Some(tokens))
             }
             Err(_) => Ok(None),
@@ -291,10 +326,14 @@ impl GoogleAuth {
     }
 
     pub fn delete_tokens(&self) -> anyhow::Result<()> {
-        let entry = Entry::new(SERVICE_NAME, "google_tokens")
-            .map_err(|e| anyhow::anyhow!("error creando entry: {}", e))?;
+        let entry_main = Entry::new(SERVICE_NAME, "google_tokens")
+            .map_err(|e| anyhow::anyhow!("error creando entry principal: {}", e))?;
+            
+        let entry_id = Entry::new(SERVICE_NAME, "google_id_token")
+            .map_err(|e| anyhow::anyhow!("error creando entry id_token: {}", e))?;
 
-        let _ = entry.delete_credential();
+        let _ = entry_main.delete_credential();
+        let _ = entry_id.delete_credential();
         Ok(())
     }
 
@@ -335,6 +374,7 @@ impl GoogleAuth {
         struct RefreshResponse {
             access_token: String,
             expires_in: i64,
+            id_token: Option<String>,
         }
 
         let refresh_response: RefreshResponse = response
@@ -349,6 +389,7 @@ impl GoogleAuth {
             refresh_token: tokens.refresh_token,
             expires_at: new_expires_at,
             email: tokens.email,
+            id_token: refresh_response.id_token.or(tokens.id_token),
         };
 
         self.save_tokens(&new_tokens)?;

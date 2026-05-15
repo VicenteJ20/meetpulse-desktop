@@ -201,7 +201,8 @@ pub async fn get_cloud_job_artifacts(
     let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
         .ok_or("no hay token de autenticación")?;
         
-    let api = crate::api_client::ApiClient::new(token.access_token);
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
     
     let transcription = if include_transcription {
         let payload = api.get_json(&format!("/v1/jobs/{job_id}/artifacts/transcription_md/content")).await.map_err(to_message)?;
@@ -256,7 +257,8 @@ pub async fn request_transcription(
     let relative_path = transcription_relative_path(client, project);
     let source_duration_ms = duration_ms.or_else(|| state.storage.recording_duration_ms(&recording_id).ok().flatten());
     
-    let api = crate::api_client::ApiClient::new(token.access_token);
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
     let (status, body) = api.upload_transcription(
         &source,
         &upload_file_name,
@@ -272,7 +274,8 @@ pub async fn sync_cloud_dashboard(state: State<'_, AppState>) -> Result<CloudDas
     let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
         .ok_or("no hay token de autenticación")?;
         
-    let api = crate::api_client::ApiClient::new(token.access_token);
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
     
     Ok(CloudDashboard {
         clients: api.get_json("/v1/dashboard/clients").await.map_err(to_message)?,
@@ -289,7 +292,8 @@ pub async fn request_analysis_retry(
     let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
         .ok_or("no hay token de autenticación")?;
         
-    let api = crate::api_client::ApiClient::new(token.access_token);
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
     let payload = api.post_json(&format!("/v1/jobs/{job_id}/analysis/retry")).await.map_err(to_message)?;
     
     Ok(AnalysisRetryResult {
