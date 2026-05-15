@@ -552,6 +552,15 @@ export function App() {
   }
 
   async function handleRequestAnalysis(row: AudioRow) {
+    const audioPath = recordingAudioPath(row.recording);
+    const audioSrc = audioPath ? toPlayableAudioSrc(audioPath) : "";
+    const cloudJob = selectedCloudJob;
+    const canRetryFromTranscription = Boolean(cloudJob?.has_transcription);
+
+    setAnalysisError(null);
+    setAnalysisMessage(null);
+    setArtifactError(null);
+
     if (!authState?.is_authenticated) {
       setAnalysisError("Debes iniciar sesion con Google para solicitar el analisis.");
       return;
