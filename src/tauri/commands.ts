@@ -261,16 +261,12 @@ export function saveRecordingToLibrary({
 
 export function requestTranscription({
   recordingId,
-  endpoint,
-  apiKey,
   client,
   project,
   fileName,
   durationMs,
 }: {
   recordingId: string;
-  endpoint: string;
-  apiKey: string;
   client?: string;
   project?: string;
   fileName?: string;
@@ -280,78 +276,43 @@ export function requestTranscription({
     return Promise.resolve({ status: 202, body: "{}" });
   }
 
-  return invoke("request_transcription", { recordingId, endpoint, apiKey, client, project, fileName, durationMs });
+  return invoke("request_transcription", { recordingId, client, project, fileName, durationMs });
 }
 
 export async function requestAnalysisRetry({
-  baseUrl,
-  apiKey,
   jobId,
 }: {
-  baseUrl: string;
-  apiKey: string;
   jobId: string;
 }): Promise<AnalysisRetryResult> {
   if (!isTauriRuntime) {
-    const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/v1/jobs/${jobId}/analysis/retry`, {
-      method: "POST",
-      headers: {
-        "X-API-Key": apiKey,
-        Accept: "application/json",
-      },
-    });
-
-    if (!response.ok) throw new Error(await fetchResponseErrorMessage(response));
-
-    return response.json();
+    throw new Error("Mock analysis retry not supported without tauri");
   }
 
-  return invoke("request_analysis_retry", { baseUrl, apiKey, jobId });
+  return invoke("request_analysis_retry", { jobId });
 }
 
-export async function syncCloudDashboard({
-  baseUrl,
-  apiKey,
-}: {
-  baseUrl: string;
-  apiKey: string;
-}): Promise<CloudDashboard> {
+export async function syncCloudDashboard(): Promise<CloudDashboard> {
   if (!isTauriRuntime) {
-    const [clients, projects, jobs] = await Promise.all([
-      fetchJsonWithApiKey(`${baseUrl.replace(/\/+$/, "")}/v1/dashboard/clients`, apiKey),
-      fetchJsonWithApiKey(`${baseUrl.replace(/\/+$/, "")}/v1/dashboard/projects`, apiKey),
-      fetchJsonWithApiKey(`${baseUrl.replace(/\/+$/, "")}/v1/jobs/?limit=100&offset=0`, apiKey),
-    ]);
-    return { clients, projects, jobs };
+    return { clients: [], projects: [], jobs: { items: [], total: 0 } };
   }
 
-  return invoke("sync_cloud_dashboard", { baseUrl, apiKey });
+  return invoke("sync_cloud_dashboard");
 }
 
 export async function getCloudJobArtifacts({
-  baseUrl,
-  apiKey,
   jobId,
   includeTranscription,
   includeAnalysis,
 }: {
-  baseUrl: string;
-  apiKey: string;
   jobId: string;
   includeTranscription: boolean;
   includeAnalysis: boolean;
 }): Promise<CloudJobArtifacts> {
   if (!isTauriRuntime) {
-    const [transcription, analysis] = await Promise.all([
-      includeTranscription
-        ? fetchJobArtifactContent(baseUrl, apiKey, jobId, "transcription_md")
-        : Promise.resolve(null),
-      includeAnalysis ? fetchJobArtifactContent(baseUrl, apiKey, jobId, "analysis_md") : Promise.resolve(null),
-    ]);
-    return { transcription, analysis };
+    return { transcription: null, analysis: null };
   }
 
-  return invoke("get_cloud_job_artifacts", { baseUrl, apiKey, jobId, includeTranscription, includeAnalysis });
+  return invoke("get_cloud_job_artifacts", { jobId, includeTranscription, includeAnalysis });
 }
 
 export function getAudioDevices(): Promise<AudioDevice[]> {

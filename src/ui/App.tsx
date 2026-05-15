@@ -288,7 +288,7 @@ export function App() {
   const selectedRecording = selectedRecordingId
     ? (recordings.find((recording) => recording.id === selectedRecordingId) ?? emptyRecordingSummary)
     : emptyRecordingSummary;
-  const cloudMode = Boolean(normalizeBackendUrl(backendUrl) && transcriptionApiKey.trim());
+  const cloudMode = Boolean(authState?.is_authenticated);
   const localAudioRows = useMemo<AudioRow[]>(
     () =>
       recordings.map((recording) => {
@@ -378,15 +378,11 @@ export function App() {
       if (!expandedContentOpen) return;
       if (!selectedCloudJob) return;
 
-      const normalizedBackendUrl = normalizeBackendUrl(backendUrl);
-      const apiKey = transcriptionApiKey.trim();
-      if (!normalizedBackendUrl || !apiKey || (!selectedCloudJob.has_transcription && !selectedCloudJob.has_analysis)) return;
+      if (!authState?.is_authenticated || (!selectedCloudJob.has_transcription && !selectedCloudJob.has_analysis)) return;
 
       setArtifactLoading(true);
       try {
         const artifacts = await getCloudJobArtifacts({
-          baseUrl: normalizedBackendUrl,
-          apiKey,
           jobId: selectedCloudJob.job_id,
           includeTranscription: Boolean(selectedCloudJob.has_transcription),
           includeAnalysis: Boolean(selectedCloudJob.has_analysis),
@@ -556,25 +552,8 @@ export function App() {
   }
 
   async function handleRequestAnalysis(row: AudioRow) {
-    const normalizedBackendUrl = normalizeBackendUrl(backendUrl);
-    const endpoint = normalizedBackendUrl ? `${normalizedBackendUrl}/transcription/` : "";
-    const apiKey = transcriptionApiKey.trim();
-    const audioPath = recordingAudioPath(row.recording);
-    const audioSrc = audioPath ? toPlayableAudioSrc(audioPath) : "";
-    const cloudJob = selectedCloudJob;
-    const canRetryFromTranscription = Boolean(cloudJob?.has_transcription);
-
-    setAnalysisError(null);
-    setAnalysisMessage(null);
-    setArtifactError(null);
-
-    if (!normalizedBackendUrl) {
-      setAnalysisError("Configura la URL del backend antes de solicitar el analisis.");
-      return;
-    }
-
-    if (!apiKey) {
-      setAnalysisError("Configura la API key antes de solicitar el analisis.");
+    if (!authState?.is_authenticated) {
+      setAnalysisError("Debes iniciar sesion con Google para solicitar el analisis.");
       return;
     }
 
@@ -588,8 +567,6 @@ export function App() {
       let acceptedJobId: string | undefined;
       if (canRetryFromTranscription && cloudJob) {
         await requestAnalysisRetry({
-          baseUrl: normalizedBackendUrl,
-          apiKey,
           jobId: cloudJob.job_id,
         });
         acceptedJobId = cloudJob.job_id;
@@ -598,8 +575,6 @@ export function App() {
       } else if (isTauriRuntime) {
         const result = await requestTranscription({
           recordingId: row.recording.id,
-          endpoint,
-          apiKey,
           client: saveClient || row.client,
           project: saveProject || row.project,
           fileName: saveFileName || row.displayName,
@@ -612,8 +587,8 @@ export function App() {
         }
       } else {
         const result = await requestBrowserTranscription({
-          endpoint,
-          apiKey,
+          endpoint: "",
+          apiKey: "",
           audioSrc,
           audioPath,
           displayName: saveFileName || row.displayName,
@@ -667,24 +642,17 @@ export function App() {
   }
 
   async function refreshCloudDashboard({ showMessage }: { showMessage: boolean }) {
-    const normalizedBackendUrl = normalizeBackendUrl(backendUrl);
-    const apiKey = transcriptionApiKey.trim();
     setCloudSyncError(null);
     if (showMessage) setSettingsMessage(null);
 
-    if (!normalizedBackendUrl) {
-      setCloudSyncError("Configura una URL http valida para sincronizar.");
-      return;
-    }
-
-    if (!apiKey) {
-      setCloudSyncError("Configura la API key para sincronizar.");
+    if (!authState?.is_authenticated) {
+      setCloudSyncError("Debes iniciar sesion con Google para sincronizar.");
       return;
     }
 
     setCloudSyncing(true);
     try {
-      const dashboard = await syncCloudDashboard({ baseUrl: normalizedBackendUrl, apiKey });
+      const dashboard = await syncCloudDashboard();
       setCloudClients(parseCloudClients(dashboard.clients));
       setCloudProjects(parseCloudProjects(dashboard.projects));
       setCloudJobs(parseCloudJobs(dashboard.jobs));
@@ -815,7 +783,7 @@ export function App() {
                   }}
                 >
                   <Mic />
-                  <span>Abrir grabador</span>
+                  <span>Iniciar grabacion</span>
                 </button>
               </div>
 
@@ -886,20 +854,6 @@ export function App() {
                 <div className="dashboard-tools">
                   {dashboardView === "library" ? (
                     <>
-                      <button
-                        type="button"
-                        className="open-widget-button"
-                        onClick={() => {
-                          if (isTauriRuntime) {
-                            showWindow("widget");
-                          }
-                        }}
-                        title="Abrir grabador"
-                        aria-label="Abrir grabador"
-                      >
-                        <Mic />
-                        <span>Abrir grabador</span>
-                      </button>
                       <label className="search-box" title="Buscar audio">
                         <Search />
                         <input value={audioQuery} onChange={(event) => setAudioQuery(event.currentTarget.value)} placeholder="Buscar audio, cliente o nota" />
@@ -909,7 +863,7 @@ export function App() {
                       </button>
                     </>
                   ) : (
-                    <span className="backend-status">{normalizeBackendUrl(backendUrl) || "Sin servidor"}</span>
+                    <span className="backend-status">{authState?.is_authenticated ? "Conectado a nube" : "Modo local"}</span>
                   )}
                 </div>
               </header>
@@ -918,44 +872,13 @@ export function App() {
                 <section className="settings-panel">
                   <div className="section-head">
                     <div>
-                      <p>Servidor backend</p>
-                      <h2>Conexion de analisis</h2>
+                      <p>Sincronizacion de servicios</p>
+                      <h2>Servicios Cloud</h2>
                     </div>
                     <span><Settings /> Sistema</span>
                   </div>
 
                   <div className="settings-form">
-                    <label className="field-control">
-                      <span>URL del backend</span>
-                      <input
-                        value={backendUrl}
-                        onChange={(event) => {
-                          setBackendUrl(event.currentTarget.value);
-                          setSettingsMessage(null);
-                        }}
-                        placeholder={defaultBackendUrl}
-                      />
-                    </label>
-                    <label className="field-control">
-                      <span>API key</span>
-                      <input
-                        type="password"
-                        value={transcriptionApiKey}
-                        onChange={(event) => {
-                          setTranscriptionApiKey(event.currentTarget.value);
-                          setSettingsMessage(null);
-                        }}
-                        placeholder="API key del servicio"
-                      />
-                    </label>
-                    <div className="settings-preview">
-                      <span>Endpoint de analisis</span>
-                      <strong>{normalizeBackendUrl(backendUrl) ? `${normalizeBackendUrl(backendUrl)}/transcription/` : "Sin URL valida"}</strong>
-                    </div>
-                    <button type="button" className="settings-save" onClick={handleSaveSettings}>
-                      <Save />
-                      Guardar configuracion
-                    </button>
                     <div className="cloud-sync-panel">
                       <div className="cloud-sync-head">
                         <div>
