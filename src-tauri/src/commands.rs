@@ -245,7 +245,7 @@ pub async fn request_transcription(
     let relative_path = transcription_relative_path(client, project);
     let source_duration_ms = duration_ms.or_else(|| state.storage.recording_duration_ms(&recording_id).ok().flatten());
     send_transcription_request(
-        &config.endpoint,
+        &config.base_url,
         &token.access_token,
         &source,
         &upload_file_name,
@@ -644,13 +644,17 @@ fn multipart_file_name(value: &str) -> String {
 #[derive(Debug)]
 struct BackendConfig {
     base_url: String,
-    endpoint: String,
 }
 
 fn get_backend_config() -> BackendConfig {
+    #[cfg(debug_assertions)]
+    let base_url = "http://localhost:8000".to_string();
+
+    #[cfg(not(debug_assertions))]
+    let base_url = "https://api.tu-backend-produccion.com".to_string();
+
     BackendConfig {
-        base_url: "http://localhost:8000".to_string(),
-        endpoint: "http://localhost:8000".to_string(),
+        base_url,
     }
 }
 
