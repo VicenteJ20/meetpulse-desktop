@@ -1,5 +1,5 @@
 ﻿import { clsx } from 'clsx';
-import { Archive, ExternalLink, ListMusic, Mic, Moon, Settings, Sun, Trash2, UserRound } from 'lucide-react';
+import { Archive, ArchiveRestore, ExternalLink, ListMusic, Mic, Moon, Settings, Sun, Trash2, UserRound } from 'lucide-react';
 import { showWindow } from '../../../tauri/window';
 import { openExternalUrl, isTauriRuntime } from '../../../tauri/commands';
 import { unclassifiedClient } from '../../lib/libraryConstants';
@@ -19,11 +19,11 @@ export function LibrarySidebar({
 }: {
   appIcon: string;
   recordingsCount: number;
-  dashboardView: 'library' | 'settings';
+  dashboardView: 'library' | 'archived' | 'settings';
   theme: 'light' | 'dark';
   clients: { name: string; count: number }[];
   selectedClient: string;
-  onDashboardViewChange: (view: 'library' | 'settings') => void;
+  onDashboardViewChange: (view: 'library' | 'archived' | 'settings') => void;
   onThemeChange: (theme: 'light' | 'dark') => void;
   onArchiveClient: (client: string) => void;
   onDeleteClient: (client: string) => void;
@@ -64,6 +64,14 @@ export function LibrarySidebar({
         >
           <ListMusic />
           Biblioteca
+        </button>
+        <button
+          type="button"
+          className={clsx(dashboardView === 'archived' && 'is-selected')}
+          onClick={() => onDashboardViewChange('archived')}
+        >
+          <ArchiveRestore />
+          Archivados
         </button>
         <button
           type="button"

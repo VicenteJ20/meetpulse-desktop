@@ -47,6 +47,7 @@ import {
   getAudioDevices,
   getSelectedAudioDevices,
   isTauriRuntime,
+  listArchivedCloudJobs,
   openExternalUrl,
   openRecordingFolder,
   requestAnalysisRetry,
@@ -54,6 +55,7 @@ import {
   saveRecordingToLibrary,
   selectAudioDevice,
   syncCloudDashboard,
+  unarchiveCloudJob,
   type AudioDevice,
   type RecordingSummary,
 } from "../tauri/commands";
@@ -83,6 +85,7 @@ import { WindowTitlebar } from "./components/layout/WindowTitlebar";
 import { CompactWidget } from "./components/layout/CompactWidget";
 import { LibrarySidebar } from "./components/layout/LibrarySidebar";
 import { AudioLibraryTable } from "./components/library/AudioLibraryTable";
+import { ArchivedAudioList } from "./components/library/ArchivedAudioList";
 import { SettingsPanel } from "./components/layout/SettingsPanel";
 import { DetailsPanel } from "./components/layout/DetailsPanel";
 import { AudioFocusView } from "./components/layout/AudioFocusView";
@@ -149,7 +152,7 @@ export function App() {
   const isWidgetWindow = windowLabel === "widget";
   const [now, setNow] = useState(() => Date.now());
   const [showHistory, setShowHistory] = useState(false);
-  const [dashboardView, setDashboardView] = useState<"library" | "settings">("library");
+  const [dashboardView, setDashboardView] = useState<"library" | "archived" | "settings">("library");
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem("recorder-view-mode") === "compact");
   const [pinned, setPinned] = useState(() => localStorage.getItem("recorder-window-pinned") === "true");
   const [saveClient, setSaveClient] = useState("");
@@ -182,8 +185,12 @@ export function App() {
   const [cloudClients, setCloudClients] = useState<CloudClient[]>([]);
   const [cloudProjects, setCloudProjects] = useState<CloudProject[]>([]);
   const [cloudJobs, setCloudJobs] = useState<CloudJob[]>([]);
+  const [archivedCloudJobs, setArchivedCloudJobs] = useState<CloudJob[]>([]);
   const [cloudSyncing, setCloudSyncing] = useState(false);
   const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const [archivedSyncing, setArchivedSyncing] = useState(false);
+  const [archivedError, setArchivedError] = useState<string | null>(null);
+  const [restoringArchivedId, setRestoringArchivedId] = useState<string | null>(null);
   const [cloudSyncedAt, setCloudSyncedAt] = useState<string | null>(null);
   const [artifactLoading, setArtifactLoading] = useState(false);
   const [artifactError, setArtifactError] = useState<string | null>(null);
@@ -211,6 +218,12 @@ export function App() {
     if (!authState?.is_authenticated) return;
     void refreshCloudDashboard({ showMessage: false });
   }, [authState?.is_authenticated, isWidgetWindow]);
+
+  useEffect(() => {
+    if (dashboardView !== "archived") return;
+    if (!authState?.is_authenticated) return;
+    void refreshArchivedCloudJobs();
+  }, [authState?.is_authenticated, dashboardView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -333,6 +346,10 @@ export function App() {
     () => cloudJobs.map((job) => cloudJobToAudioRow(job, cloudClients, cloudProjects)),
     [cloudClients, cloudJobs, cloudProjects],
   );
+  const archivedCloudRows = useMemo<AudioRow[]>(
+    () => archivedCloudJobs.map((job) => cloudJobToAudioRow(job, cloudClients, cloudProjects)),
+    [archivedCloudJobs, cloudClients, cloudProjects],
+  );
   const linkedCloudJobIds = useMemo(
     () => new Set(Object.values(cloudJobByRecordingId).filter(Boolean)),
     [cloudJobByRecordingId],
@@ -343,6 +360,10 @@ export function App() {
       ...localAudioRows.filter((row) => row.status !== "archived" && (!row.cloudJobId || !linkedCloudJobIds.has(row.cloudJobId))),
     ],
     [cloudAudioRows, linkedCloudJobIds, localAudioRows],
+  );
+  const archivedRows = useMemo<AudioRow[]>(
+    () => [...archivedCloudRows, ...localAudioRows.filter((row) => row.status === "archived")],
+    [archivedCloudRows, localAudioRows],
   );
   const clients = useMemo(() => mergeClientGroups(buildClientGroups(audioRows), cloudClients), [audioRows, cloudClients]);
   const projectsForSelectedClient = useMemo(
@@ -662,6 +683,25 @@ export function App() {
     }
   }
 
+  async function handleRestoreArchivedAudio(row: AudioRow) {
+    setArchivedError(null);
+    setRestoringArchivedId(row.recording.id);
+    try {
+      if (row.source === "cloud" && row.cloudJobId) {
+        await unarchiveCloudJob(row.cloudJobId);
+        await Promise.all([refreshCloudDashboard({ showMessage: false }), refreshArchivedCloudJobs()]);
+      } else {
+        const draftState = isDraftClient(row.metadata.client) ? "draft_saved" : "classified";
+        updateAudioMetadata(row.recording.id, { ...row.metadata, draftState });
+        await refresh();
+      }
+    } catch (error) {
+      setArchivedError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRestoringArchivedId(null);
+    }
+  }
+
   async function handleArchiveClient(clientName: string) {
     if (clientName === unclassifiedClient) return;
     const confirmed = window.confirm(`Archivar cliente "${clientName}"? Se ocultaran el cliente y sus audios asociados.`);
@@ -900,6 +940,25 @@ export function App() {
     }
   }
 
+  async function refreshArchivedCloudJobs() {
+    setArchivedError(null);
+
+    if (!authState?.is_authenticated) {
+      setArchivedCloudJobs([]);
+      return;
+    }
+
+    setArchivedSyncing(true);
+    try {
+      const jobs = await listArchivedCloudJobs();
+      setArchivedCloudJobs(parseCloudJobs(jobs));
+    } catch (error) {
+      setArchivedError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setArchivedSyncing(false);
+    }
+  }
+
   async function handleCopyArtifact() {
     if (!selectedArtifactContent?.trim()) return;
 
@@ -977,8 +1036,14 @@ export function App() {
             <div className="dashboard-main">
               <header className="dashboard-topbar" data-tauri-drag-region>
                 <div>
-                  <p>{dashboardView === "settings" ? "Preferencias" : "Biblioteca administrativa"}</p>
-                  <h1>{dashboardView === "settings" ? "Configuracion" : selectedClient}</h1>
+                  <p>
+                    {dashboardView === "settings"
+                      ? "Preferencias"
+                      : dashboardView === "archived"
+                        ? "Archivo"
+                        : "Biblioteca administrativa"}
+                  </p>
+                  <h1>{dashboardView === "settings" ? "Configuracion" : dashboardView === "archived" ? "Archivados" : selectedClient}</h1>
                 </div>
                 <div className="dashboard-tools">
                   {dashboardView === "library" ? (
@@ -1012,6 +1077,17 @@ export function App() {
                   message={settingsMessage}
                   error={cloudSyncError}
                 />
+              ) : dashboardView === "archived" ? (
+                <div className="content-grid is-archived">
+                  <ArchivedAudioList
+                    rows={archivedRows}
+                    loading={archivedSyncing}
+                    error={archivedError}
+                    restoringId={restoringArchivedId}
+                    audioDurationById={audioDurationById}
+                    onRestore={(row) => void handleRestoreArchivedAudio(row)}
+                  />
+                </div>
               ) : (
                 <>
                   <div className="project-strip" aria-label="Proyectos">

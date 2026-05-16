@@ -123,6 +123,7 @@ export function cloudJobToAudioRow(job: CloudJob, cloudClients: CloudClient[] = 
   const title = job.source_filename.replace(/\.(opus|mp3)$/i, "") || job.job_id;
   const startedAt = job.accepted_at ?? job.completed_at ?? new Date(0).toISOString();
   const hasCloudContent = Boolean(job.has_transcription || job.has_analysis);
+  const status: AudioRow["status"] = job.status === "archived" ? "archived" : hasCloudContent ? "classified" : "draft_saved";
 
   return {
     recording: {
@@ -143,14 +144,14 @@ export function cloudJobToAudioRow(job: CloudJob, cloudClients: CloudClient[] = 
       project,
       title,
       notes: "",
-      draftState: hasCloudContent ? "classified" : "draft_saved",
+      draftState: status,
     },
     displayName: title,
     client,
     project,
     clientSlug,
     projectSlug,
-    status: hasCloudContent ? "classified" : "draft_saved",
+    status,
     source: "cloud",
     cloudJobId: job.job_id,
   };

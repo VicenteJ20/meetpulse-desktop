@@ -318,6 +318,11 @@ export async function archiveCloudJob(jobId: string): Promise<void> {
   return invoke("archive_cloud_job", { jobId });
 }
 
+export async function unarchiveCloudJob(jobId: string): Promise<void> {
+  if (!isTauriRuntime) return Promise.resolve();
+  return invoke("unarchive_cloud_job", { jobId });
+}
+
 export async function deleteCloudJob(jobId: string): Promise<void> {
   if (!isTauriRuntime) return Promise.resolve();
   return invoke("delete_cloud_job", { jobId });
@@ -349,6 +354,14 @@ export async function syncCloudDashboard(): Promise<CloudDashboard> {
   }
 
   return invoke("sync_cloud_dashboard");
+}
+
+export async function listArchivedCloudJobs(): Promise<unknown> {
+  if (!isTauriRuntime) {
+    return [];
+  }
+
+  return invoke("list_archived_cloud_jobs");
 }
 
 export async function getCloudJobArtifacts({

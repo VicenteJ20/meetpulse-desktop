@@ -293,6 +293,16 @@ pub async fn sync_cloud_dashboard(state: State<'_, AppState>) -> Result<CloudDas
 }
 
 #[tauri::command]
+pub async fn list_archived_cloud_jobs(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticaciÃ³n")?;
+
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
+    api.get_json("/v1/jobs/?limit=100&offset=0&status=archived").await.map_err(to_message)
+}
+
+#[tauri::command]
 pub async fn request_analysis_retry(
     state: State<'_, AppState>,
     job_id: String,
@@ -338,6 +348,20 @@ pub async fn archive_cloud_job(
     let api_token = token.id_token.unwrap_or(token.access_token);
     let api = crate::api_client::ApiClient::new(api_token);
     api.post_json(&format!("/v1/jobs/{job_id}/archive")).await.map_err(to_message)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unarchive_cloud_job(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<(), String> {
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticaciÃƒÂ³n")?;
+
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
+    api.post_json(&format!("/v1/jobs/{job_id}/unarchive")).await.map_err(to_message)?;
     Ok(())
 }
 
