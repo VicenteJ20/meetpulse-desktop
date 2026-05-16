@@ -66,6 +66,8 @@ import {
 import { useAuthStore } from "../store/authStore";
 import { useRecorderStore } from "../store/recorderStore";
 import { LoginScreen } from "./Login";
+import { useLiveDuration } from "../hooks/useLiveDuration";
+import { LegacyRecorder, LegacyHistoryPanel } from "./components/recorder/LegacyRecorder";
 import { StatusBadge } from "./components/library/StatusBadge";
 import { MarkdownBlock } from "./components/markdown/MarkdownBlock";
 import { ControlButton } from "./components/recorder/ControlButton";
@@ -983,203 +985,78 @@ export function App() {
           </section>
 
           {legacyExpandedRecorderEnabled && (
-      <section className="recorder-card">
-        <header className="recorder-header" data-tauri-drag-region>
-          <div data-tauri-drag-region>
-            <p className="recording-title">{statusTitle(status)}</p>
-            <p className="recording-subtitle">{statusSubtitle(status)}</p>
-          </div>
-          <label className="view-switch" title="Vista minima">
-            <span>Vista minima</span>
-            <input
-              type="checkbox"
-              checked={compactMode}
-              onChange={(event) => toggleCompactMode(event.currentTarget.checked)}
-            />
-            <span className="switch-track" />
-          </label>
-        </header>
-
-        <div className="recording-file" title={visibleRecordingName} data-tauri-drag-region>
-          <span>Archivo</span>
-          <strong>{visibleRecordingName}</strong>
-        </div>
-
-        <div className="device-selectors">
-          <DeviceSelect
-            label="Microfono"
-            icon={<Mic />}
-            devices={inputDevices}
-            value={selectedInputId}
-            disabled={isActive}
-            onChange={(deviceId) => void handleDeviceChange("input", deviceId)}
-          />
-          <DeviceSelect
-            label="Audio PC"
-            icon={<MonitorSpeaker />}
-            devices={outputDevices}
-            value={selectedOutputId}
-            disabled={isActive}
-            onChange={(deviceId) => void handleDeviceChange("output", deviceId)}
-          />
-        </div>
-
-        <div className="duration-row" data-tauri-drag-region>
-          <span className="duration-value">{duration}</span>
-        </div>
-
-        <div className="controls">
-          <ControlButton
-            label="CERRAR"
-            className="secondary"
-            icon={<X />}
-            disabled={isBusy || !isActive}
-            onClick={() => void stop()}
-          />
-
-          <ControlButton
-            label={isPaused ? "REANUDAR" : isRecording ? "PAUSAR" : "GRABAR"}
-            className="primary"
-            icon={isRecording ? <Pause /> : <Play />}
-            disabled={isBusy}
-            onClick={handlePrimary}
-          />
-
-          <ControlButton
-            label="FINALIZAR"
-            className="finish"
-            icon={<Square />}
-            disabled={isBusy || !isActive}
-            onClick={() => void stop()}
-          />
-        </div>
-
-        <div className="waveform-panel" data-tauri-drag-region>
-          <TrackWave
-            label="Micrófono"
-            icon={<Mic />}
-            level={micLevel}
-            bars={visibleMicBars}
-            active={isRecording}
-            color="mic"
-          />
-          <TrackWave
-            label="Equipo"
-            icon={<MonitorSpeaker />}
-            level={systemLevel}
-            bars={visibleSystemBars}
-            active={isRecording}
-            color="system"
-          />
-        </div>
-
-        <footer className="widget-footer">
-          <a
-            className="timeline-label"
-            href="https://vicentejorquera.dev"
-            target="_blank"
-            rel="noreferrer"
-            title="vicentejorquera.dev"
-            onClick={(event) => {
-              event.preventDefault();
-              void openExternalUrl("https://vicentejorquera.dev");
-            }}
-          >
-            Diseñado y desarrollado por Vicente Jorquera
-            <ExternalLink />
-          </a>
-          <button
-            type="button"
-            className="history-button"
-            onClick={() => {
-              setShowHistory((value) => !value);
-              void refresh();
-            }}
-            title="Historial"
-            aria-label="Historial"
-          >
-            <History />
-          </button>
-        </footer>
-
-        {showHistory && (
-          <section className="history-panel">
-            <div className="history-header">
-              <span>Historial</span>
-              <button type="button" onClick={() => setShowHistory(false)} aria-label="Cerrar historial">
-                <X />
-              </button>
-            </div>
-            <div className="history-list">
-              {recordings.length === 0 ? (
-                <p className="history-empty">Todavía no hay grabaciones.</p>
-              ) : (
-                recordings.map((recording) => (
-                  <button
-                    key={recording.id}
-                    type="button"
-                    className={clsx("history-item", selectedRecordingId === recording.id && "is-selected")}
-                    onClick={() => {
-                      setSelectedRecordingId(recording.id);
-                      setSaveError(null);
-                      setSavedPath(null);
-                      setSaveFileName(displayRecordingName(recording));
-                    }}
-                  >
-                    <span className="history-name">{displayRecordingName(recording)}</span>
-                    <span className="history-meta">
-                      {formatDuration(recording.duration_ms)} · {recording.status}
-                    </span>
-                  </button>
-                ))
+            <>
+              <LegacyRecorder
+                status={status}
+                statusTitle={statusTitle}
+                statusSubtitle={statusSubtitle}
+                compactMode={compactMode}
+                visibleRecordingName={visibleRecordingName}
+                inputDevices={inputDevices}
+                outputDevices={outputDevices}
+                selectedInputId={selectedInputId}
+                selectedOutputId={selectedOutputId}
+                duration={duration}
+                micLevel={micLevel}
+                systemLevel={systemLevel}
+                visibleMicBars={visibleMicBars}
+                visibleSystemBars={visibleSystemBars}
+                isRecording={isRecording}
+                isActive={isActive}
+                isBusy={isBusy}
+                isPaused={isPaused}
+                recordings={recordings}
+                selectedRecordingId={selectedRecordingId}
+                selectedRecording={selectedRecording}
+                saving={saving}
+                saveClient={saveClient}
+                saveProject={saveProject}
+                saveFileName={saveFileName}
+                savedPath={savedPath}
+                saveError={saveError}
+                onToggleCompactMode={toggleCompactMode}
+                onDeviceChange={handleDeviceChange}
+                onStop={() => void stop()}
+                onPrimary={handlePrimary}
+                onToggleHistory={() => setShowHistory((value) => !value)}
+                onSelectRecording={(recording) => {
+                  setSelectedRecordingId(recording.id);
+                  setSaveError(null);
+                  setSavedPath(null);
+                  setSaveFileName(displayRecordingName(recording));
+                }}
+                onSave={handleSave}
+                onCloseOrganize={() => setSelectedRecordingId(null)}
+                onClientChange={setSaveClient}
+                onProjectChange={setSaveProject}
+                onFileNameChange={setSaveFileName}
+              />
+              {showHistory && (
+                <LegacyHistoryPanel
+                  recordings={recordings}
+                  selectedRecordingId={selectedRecordingId}
+                  selectedRecording={selectedRecording}
+                  saving={saving}
+                  saveClient={saveClient}
+                  saveProject={saveProject}
+                  saveFileName={saveFileName}
+                  savedPath={savedPath}
+                  saveError={saveError}
+                  onSelectRecording={(recording) => {
+                    setSelectedRecordingId(recording.id);
+                    setSaveError(null);
+                    setSavedPath(null);
+                    setSaveFileName(displayRecordingName(recording));
+                  }}
+                  onSave={handleSave}
+                  onClose={() => setShowHistory(false)}
+                  onClientChange={setSaveClient}
+                  onProjectChange={setSaveProject}
+                  onFileNameChange={setSaveFileName}
+                />
               )}
-            </div>
-            {selectedRecording && (
-              <div className="organize-panel">
-                <div className="organize-head">
-                  <span>Organizar audio</span>
-                  <button type="button" onClick={() => setSelectedRecordingId(null)} aria-label="Cerrar organizador">
-                    <X />
-                  </button>
-                </div>
-                <div className="save-fields">
-                  <input
-                    value={saveClient}
-                    onChange={(event) => setSaveClient(event.currentTarget.value)}
-                    placeholder="Cliente"
-                    disabled={saving}
-                  />
-                  <input
-                    value={saveProject}
-                    onChange={(event) => setSaveProject(event.currentTarget.value)}
-                    placeholder="Proyecto"
-                    disabled={saving}
-                  />
-                  <input
-                    value={saveFileName}
-                    onChange={(event) => setSaveFileName(event.currentTarget.value)}
-                    placeholder={displayRecordingName(selectedRecording)}
-                    disabled={saving}
-                  />
-                </div>
-                <div className="organize-actions">
-                  <button type="button" onClick={() => void openRecordingFolder(selectedRecording.id)} disabled={saving}>
-                    <FolderOpen />
-                    Abrir
-                  </button>
-                  <button type="button" onClick={() => void handleSave(selectedRecording.id, false)} disabled={saving}>
-                    <Save />
-                    Guardar organizado
-                  </button>
-                </div>
-                {(savedPath || saveError) && <p className={clsx("save-message", saveError && "is-error")}>{saveError ?? savedPath}</p>}
-              </div>
-            )}
-          </section>
-        )}
-
-        {(error || snapshot?.last_error || deviceError) && <div className="widget-error">{error ?? snapshot?.last_error ?? deviceError}</div>}
-      </section>
+              {(error || snapshot?.last_error || deviceError) && <div className="widget-error">{error ?? snapshot?.last_error ?? deviceError}</div>}
+            </>
           )}
         </>
       )}
@@ -1187,28 +1064,3 @@ export function App() {
   );
 }
 
-function useLiveDuration(
-  snapshot: {
-    status: string;
-    recording_id?: string | null;
-    duration_ms: number;
-  } | null,
-  now: number,
-): number {
-  const [anchor, setAnchor] = useState({ at: now, duration: 0, recordingId: "", status: "idle" });
-
-  useEffect(() => {
-    setAnchor({
-      at: Date.now(),
-      duration: snapshot?.duration_ms ?? 0,
-      recordingId: snapshot?.recording_id ?? "",
-      status: snapshot?.status ?? "idle",
-    });
-  }, [snapshot?.duration_ms, snapshot?.recording_id, snapshot?.status]);
-
-  if (!snapshot) return 0;
-  if (snapshot.status !== "recording") return snapshot.duration_ms;
-  if (anchor.recordingId !== (snapshot.recording_id ?? "") || anchor.status !== "recording") return snapshot.duration_ms;
-
-  return Math.max(snapshot.duration_ms, anchor.duration + now - anchor.at);
-}
