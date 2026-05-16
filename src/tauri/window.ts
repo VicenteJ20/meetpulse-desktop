@@ -11,6 +11,11 @@ export async function minimizeWindow() {
   await getCurrentWindow().minimize();
 }
 
+export async function toggleWindowMaximize() {
+  if (!isTauriRuntime) return;
+  await getCurrentWindow().toggleMaximize();
+}
+
 export async function closeWindow() {
   if (!isTauriRuntime) return;
   await getCurrentWindow().hide();

@@ -1,31 +1,40 @@
 :root, :root.light {
   /* Colors: Light Modern (VSCode inspired) */
-  --bg-base: #f8f9fa;
+  --bg-base: #f6f8fb;
   --bg-panel: #ffffff;
   --bg-glass: rgba(255, 255, 255, 0.85);
   --bg-glass-hover: rgba(255, 255, 255, 0.95);
-  --bg-hover: #f0f0f0;
-  --bg-active: #e4e6f1;
-  --bg-selected: #e8ebf5;
+  --bg-hover: #eef3f8;
+  --bg-active: #e2ebf5;
+  --bg-selected: #e7f1fb;
 
-  --border-light: #e1e4e8;
-  --border-medium: #d1d5da;
+  --border-light: #dce3ec;
+  --border-medium: #c8d3df;
   --border-focus: #0066b8;
 
-  --text-primary: #24292e;
-  --text-secondary: #586069;
-  --text-muted: #6a737d;
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #64748b;
   --text-inverse: #ffffff;
   --text-accent: #0066b8;
+  --text-content: #1f2937;
 
   --accent-primary: #0066b8;
   --accent-hover: #005cc5;
-  --accent-subtle: rgba(0, 102, 184, 0.1);
+  --accent-subtle: #e7f2fd;
 
   --status-recording: #ea4a5a;
   --status-recording-glow: rgba(234, 74, 90, 0.25);
-  --status-success: #28a745;
-  --status-success-glow: rgba(40, 167, 69, 0.25);
+  --status-success: #22c55e;
+  --status-success-glow: rgba(34, 197, 94, 0.18);
+  --badge-classified-text: #075985;
+  --badge-classified-bg: #dbeafe;
+  --badge-ready-text: #166534;
+  --badge-ready-bg: #dcfce7;
+  --badge-saved-text: #1e40af;
+  --badge-saved-bg: #dbeafe;
+  --badge-archived-text: #57534e;
+  --badge-archived-bg: #e7e5e4;
 
   /* Geometry & Effects */
   --radius-sm: 6px;
@@ -46,19 +55,20 @@
   --bg-panel: #1f1f1f;
   --bg-glass: rgba(31, 31, 31, 0.75);
   --bg-glass-hover: rgba(43, 45, 49, 0.85);
-  --bg-hover: #2b2d31;
+  --bg-hover: #24262b;
   --bg-active: #313338;
   --bg-selected: #37373d;
 
-  --border-light: #2b2d31;
-  --border-medium: #3f4147;
+  --border-light: #343741;
+  --border-medium: #484c57;
   --border-focus: #007fd4;
 
-  --text-primary: #e0e0e0;
-  --text-secondary: #9d9d9d;
-  --text-muted: #858585;
+  --text-primary: #f3f4f6;
+  --text-secondary: #c6cad3;
+  --text-muted: #a8afbd;
   --text-inverse: #ffffff;
   --text-accent: #4eb5f7;
+  --text-content: #d7dce6;
 
   --accent-primary: #007fd4;
   --accent-hover: #006ebb;
@@ -66,8 +76,16 @@
 
   --status-recording: #f14c4c;
   --status-recording-glow: rgba(241, 76, 76, 0.4);
-  --status-success: #3fb950;
-  --status-success-glow: rgba(63, 185, 80, 0.3);
+  --status-success: #86efac;
+  --status-success-glow: rgba(134, 239, 172, 0.16);
+  --badge-classified-text: #bae6fd;
+  --badge-classified-bg: var(--accent-subtle);
+  --badge-ready-text: #bbf7d0;
+  --badge-ready-bg: var(--status-success-glow);
+  --badge-saved-text: #c4d7ff;
+  --badge-saved-bg: rgba(117, 155, 255, 0.16);
+  --badge-archived-text: #c8c3b7;
+  --badge-archived-bg: var(--bg-active);
 
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
@@ -81,19 +99,20 @@
     --bg-panel: #1f1f1f;
     --bg-glass: rgba(31, 31, 31, 0.75);
     --bg-glass-hover: rgba(43, 45, 49, 0.85);
-    --bg-hover: #2b2d31;
+    --bg-hover: #24262b;
     --bg-active: #313338;
     --bg-selected: #37373d;
 
-    --border-light: #2b2d31;
-    --border-medium: #3f4147;
+    --border-light: #343741;
+    --border-medium: #484c57;
     --border-focus: #007fd4;
 
-    --text-primary: #e0e0e0;
-    --text-secondary: #9d9d9d;
-    --text-muted: #858585;
+    --text-primary: #f3f4f6;
+    --text-secondary: #c6cad3;
+    --text-muted: #a8afbd;
     --text-inverse: #ffffff;
     --text-accent: #4eb5f7;
+    --text-content: #d7dce6;
 
     --accent-primary: #007fd4;
     --accent-hover: #006ebb;
@@ -101,8 +120,16 @@
 
     --status-recording: #f14c4c;
     --status-recording-glow: rgba(241, 76, 76, 0.4);
-    --status-success: #3fb950;
-    --status-success-glow: rgba(63, 185, 80, 0.3);
+    --status-success: #86efac;
+    --status-success-glow: rgba(134, 239, 172, 0.16);
+    --badge-classified-text: #bae6fd;
+    --badge-classified-bg: var(--accent-subtle);
+    --badge-ready-text: #bbf7d0;
+    --badge-ready-bg: var(--status-success-glow);
+    --badge-saved-text: #c4d7ff;
+    --badge-saved-bg: rgba(117, 155, 255, 0.16);
+    --badge-archived-text: #c8c3b7;
+    --badge-archived-bg: var(--bg-active);
 
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
     --shadow-md: 0 4px 12px rgba(0,0,0,0.4);

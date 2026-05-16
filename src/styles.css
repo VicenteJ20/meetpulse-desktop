@@ -600,7 +600,7 @@ button {
 }
 
 .track-wave.system .wave-bar {
-  background: #34d399;
+  background: var(--status-success);
   box-shadow: 0 0 7px var(--status-success-glow);
 }
 
@@ -843,12 +843,21 @@ button {
   border-radius: var(--radius-md);
   color: var(--text-inverse);
   background: var(--accent-primary);
+  overflow: hidden;
 }
 
 .brand-mark svg,
+.brand-mark img,
 .player-now svg {
   width: 20px;
   height: 20px;
+}
+
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .sidebar-brand div,
@@ -886,7 +895,7 @@ button {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   padding: 12px;
-  background: var(--bg-hover);
+  background: var(--bg-panel);
 }
 
 .quick-recorder p,
@@ -894,7 +903,7 @@ button {
 .section-head p,
 .details-head p {
   margin: 0;
-  color: var(--border-light);
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -981,6 +990,45 @@ button {
   flex: 0 0 auto;
 }
 
+.theme-switcher {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  background: var(--bg-panel);
+}
+
+.theme-switcher button {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 7px 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.theme-switcher button:hover,
+.theme-switcher button.is-selected {
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.theme-switcher svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
 .client-nav {
   display: flex;
   min-height: 0;
@@ -995,7 +1043,7 @@ button {
   align-items: center;
   gap: 8px;
   margin: 4px 0;
-  color: var(--border-light);
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -1047,7 +1095,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--border-light);
+  color: var(--text-secondary);
   text-decoration: none;
   font-size: 11px;
   font-weight: 700;
@@ -1090,7 +1138,7 @@ button {
 .details-head h2 {
   margin: 3px 0 0;
   overflow: hidden;
-  color: var(--text-inverse);
+  color: var(--text-primary);
   font-size: 28px;
   line-height: 1.08;
   text-overflow: ellipsis;
@@ -1116,11 +1164,11 @@ button {
   flex: 1;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--border-medium);
   border-radius: var(--radius-md);
   padding: 8px 10px;
-  color: var(--text-secondary);
-  background: var(--bg-hover);
+  color: var(--text-muted);
+  background: var(--bg-panel);
 }
 
 .search-box svg {
@@ -1140,7 +1188,7 @@ button {
 }
 
 .search-box input::placeholder {
-  color: var(--border-light);
+  color: var(--text-muted);
 }
 
 .dashboard-tools button {
@@ -1183,7 +1231,7 @@ button {
   border-radius: var(--radius-pill);
   padding: 8px 12px;
   color: var(--text-secondary);
-  background: var(--bg-hover);
+  background: var(--bg-panel);
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
@@ -1207,7 +1255,7 @@ button {
 .project-cloud-badges svg {
   width: 13px;
   height: 13px;
-  color: #34d399;
+  color: var(--status-success);
 }
 
 .content-grid {
@@ -1289,7 +1337,7 @@ button {
 }
 
 .settings-save:hover {
-  background: #bae6fd;
+  background: var(--accent-hover);
 }
 
 .settings-save svg {
@@ -1410,7 +1458,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--border-light);
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -1433,13 +1481,14 @@ button {
 
 .audio-focus {
   gap: 14px;
-  overflow: auto;
-  padding: 22px 24px;
+  overflow: hidden;
+  padding: 0;
 }
 
 /* ── Audio Focus: redesigned top bar ─────────────────── */
 .audio-focus-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 12px 18px;
@@ -1738,9 +1787,9 @@ button {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
+  color: #8bd7ff;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(125, 211, 252, 0.34);
   border-radius: var(--radius-sm);
   padding: 3px 8px;
   margin-top: 4px;
@@ -1754,7 +1803,7 @@ button {
 }
 
 .transcript-text {
-  color: var(--text-secondary);
+  color: var(--text-content);
   font-size: 16px;
   line-height: 1.75;
   flex: 1;
@@ -1815,7 +1864,7 @@ button {
 .markdown-paragraph {
   max-width: 100%;
   margin: 0 0 14px;
-  color: var(--text-secondary);
+  color: var(--text-content);
   font-size: 14.5px;
   font-weight: 400;
   line-height: 1.7;
@@ -1887,7 +1936,7 @@ button {
   min-height: 24px;
   border-left: 1px solid var(--accent-subtle);
   padding: 2px 0 2px 26px;
-  color: var(--text-secondary);
+  color: var(--text-content);
   font-size: 14px;
   font-weight: 650;
   line-height: 1.55;
@@ -1963,14 +2012,12 @@ button {
 
 .audio-row:hover,
 .audio-row.is-selected {
-  background: var(--accent-subtle);
+  background: var(--bg-selected);
 }
 
 .audio-row.is-selected {
-  color: var(--text-inverse);
-  background:
-    linear-gradient(90deg, var(--accent-subtle), var(--accent-subtle)),
-    var(--bg-hover);
+  color: var(--text-primary);
+  background: var(--bg-selected);
 }
 
 .audio-index {
@@ -2005,7 +2052,7 @@ button {
 
 .audio-title strong {
   overflow: hidden;
-  color: var(--text-inverse);
+  color: var(--text-primary);
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2031,8 +2078,8 @@ button {
   border-radius: var(--radius-pill);
   padding: 5px 8px;
   overflow: hidden;
-  color: var(--text-muted);
-  background: var(--text-muted);
+  color: var(--text-secondary);
+  background: var(--bg-active);
   font-size: 10px;
   font-weight: 800;
   text-overflow: ellipsis;
@@ -2040,22 +2087,23 @@ button {
 }
 
 .status-badge.is-classified {
-  color: #bae6fd;
-  background: var(--accent-subtle);
+  color: var(--badge-classified-text);
+  background: var(--badge-classified-bg);
 }
 
 .status-badge.is-draft_ready {
-  color: #bbf7d0;
-  background: var(--status-success-glow);
+  color: var(--badge-ready-text);
+  background: var(--badge-ready-bg);
 }
 
 .status-badge.is-draft_saved {
-  color: #c4d7ff;
-  background: rgba(117, 155, 255, 0.16);
+  color: var(--badge-saved-text);
+  background: var(--badge-saved-bg);
 }
 
 .status-badge.is-archived {
-  color: #c8c3b7;
+  color: var(--badge-archived-text);
+  background: var(--badge-archived-bg);
 }
 
 .details-head {
@@ -2170,7 +2218,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -2407,8 +2455,8 @@ button {
 
 .dashboard-actions button.draft-strong {
   border-color: var(--status-success);
-  color: var(--text-inverse);
-  background: var(--status-success);
+  color: var(--badge-ready-text);
+  background: var(--badge-ready-bg);
 }
 
 .dashboard-actions button.save-strong:hover:not(:disabled),
@@ -2629,7 +2677,7 @@ button {
   display: grid;
   min-width: 0;
   flex: 1;
-  grid-template-columns: 38px 38px 38px minmax(180px, 1fr);
+  grid-template-columns: 38px 38px 38px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
 }
@@ -2666,7 +2714,7 @@ button {
 }
 
 .player-controls button:first-child:hover:not(:disabled) {
-  background: #bae6fd;
+  background: var(--accent-hover);
 }
 
 .player-controls button:disabled {
@@ -2686,7 +2734,7 @@ button {
 .player-progress {
   display: grid;
   min-width: 0;
-  grid-template-columns: 66px minmax(0, 1fr) 66px;
+  grid-template-columns: 58px minmax(0, 1fr) 58px;
   gap: 9px;
   align-items: center;
   color: var(--text-secondary);
@@ -2731,7 +2779,7 @@ button {
 
 .player-placeholder {
   display: grid;
-  width: min(520px, 54vw);
+  width: min(520px, 100%);
   height: 38px;
   place-items: center;
   border-radius: var(--radius-pill);
@@ -2813,7 +2861,7 @@ button {
 }
 
 .signal-icon.is-active.system {
-  color: #34d399;
+  color: var(--status-success);
   box-shadow:
     inset 0 0 0 1px var(--status-success-glow),
     0 0 16px var(--status-success-glow);
@@ -2846,9 +2894,20 @@ button {
   opacity: 0.38;
 }
 
-@media (max-width: 900px) {
-  .dashboard-shell {
-    grid-template-columns: 190px minmax(0, 1fr);
+@media (max-width: 1180px) {
+  .dashboard-main {
+    gap: 12px;
+    padding: 18px;
+  }
+
+  .dashboard-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-tools {
+    min-width: 0;
+    width: 100%;
   }
 
   .content-grid {
@@ -2856,16 +2915,72 @@ button {
   }
 
   .details-panel {
-    min-height: 260px;
+    min-height: 280px;
   }
 
   .audio-row {
-    grid-template-columns: 34px minmax(120px, 1fr) 76px 86px;
+    grid-template-columns: 34px minmax(0, 1fr) 76px 92px;
   }
 
   .audio-client,
   .audio-project {
     display: none;
+  }
+
+  .player-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .player-now {
+    min-width: 0;
+    width: 100%;
+    flex: none;
+  }
+
+  .player-controls {
+    width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-shell {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .audio-focus-bar {
+    align-items: stretch;
+  }
+
+  .audio-focus-identity {
+    flex-basis: calc(100% - 42px);
+  }
+
+  .audio-focus-meta-pills {
+    order: 2;
+  }
+
+  .audio-focus-tabs {
+    order: 3;
+    width: 100%;
+  }
+
+  .audio-focus-tabs button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .audio-focus-copy {
+    order: 2;
+    margin-left: auto;
+  }
+
+  .markdown-stage {
+    padding: 22px 24px;
+  }
+
+  .player-progress {
+    grid-template-columns: 52px minmax(0, 1fr) 52px;
   }
 }
 
@@ -2891,6 +3006,38 @@ button {
   .dashboard-tools {
     min-width: 0;
     width: 100%;
+  }
+
+  .search-box {
+    min-height: 36px;
+  }
+
+  .project-strip {
+    margin-right: -14px;
+    padding-right: 14px;
+  }
+
+  .audio-focus-bar {
+    padding: 10px 12px;
+  }
+
+  .audio-focus-meta-pills {
+    width: 100%;
+    overflow: auto;
+  }
+
+  .markdown-stage {
+    padding: 18px 16px;
+  }
+
+  .transcript-line {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .transcript-speaker {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .player-bar audio,
@@ -3137,22 +3284,92 @@ button {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 16px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  background: var(--accent-primary);
-  border: none;
+  min-height: 42px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-medium);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    color 0.2s,
+    transform 0.2s;
 }
 
 .recorder-launcher:hover {
-  background: var(--accent-hover);
+  color: var(--accent-primary);
+  background: var(--bg-panel);
+  border-color: var(--accent-primary);
+  transform: translateY(-1px);
 }
 
 .recorder-launcher svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+}
+
+:root.light .quick-recorder,
+:root.light .theme-switcher,
+:root.light .audio-library,
+:root.light .audio-focus,
+:root.light .details-panel,
+:root.light .player-bar,
+:root.light .settings-panel {
+  background: var(--bg-panel);
+}
+
+:root.light .quick-recorder,
+:root.light .theme-switcher {
+  box-shadow: var(--shadow-sm);
+}
+
+:root.light .workspace-nav button:hover,
+:root.light .workspace-nav button.is-selected,
+:root.light .client-nav-item:hover,
+:root.light .client-nav-item.is-selected,
+:root.light .theme-switcher button.is-selected {
+  border-color: var(--border-light);
+  background: #f1f5f9;
+}
+
+:root.light .audio-row:hover,
+:root.light .audio-row.is-selected {
+  box-shadow: none;
+}
+
+:root.light .audio-index,
+:root.light .brand-mark,
+:root.light .player-now>span {
+  background: #0078d4;
+}
+
+:root.light .audio-index {
+  color: #bfe8ff;
+}
+
+:root.light .details-fields textarea,
+:root.light .details-fields input {
+  background: #f8fafc;
+}
+
+:root.light .details-fields textarea:focus,
+:root.light .details-fields input:focus {
+  background: var(--bg-panel);
+}
+
+:root.light .details-empty svg,
+:root.light .empty-state svg {
+  color: var(--accent-primary);
+  opacity: 0.55;
+}
+
+:root.light .cloud-badge.is-available {
+  color: var(--accent-primary);
+  border-color: #7db7e8;
+  background: var(--accent-subtle);
 }

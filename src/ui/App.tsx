@@ -19,6 +19,7 @@ import {
   Mic,
   Minus,
   MonitorSpeaker,
+  Moon,
   Pause,
   Pin,
   Play,
@@ -28,6 +29,7 @@ import {
   Sparkles,
   SlidersHorizontal,
   Square,
+  Sun,
   Tag,
   UserRound,
   X,
@@ -60,6 +62,7 @@ import {
   setWindowAlwaysOnTop,
   showWindow,
   startWindowDrag,
+  toggleWindowMaximize,
 } from "../tauri/window";
 import { useAuthStore } from "../store/authStore";
 import { useRecorderStore } from "../store/recorderStore";
@@ -75,10 +78,12 @@ const audioMetadataStorageKey = "meetings-assistant-audio-metadata";
 const audioCloudJobStorageKey = "meetings-assistant-audio-cloud-jobs";
 const backendUrlStorageKey = "meetings-assistant-backend-url";
 const transcriptionApiKeyStorageKey = "meetings-assistant-transcription-api-key";
+const themeStorageKey = "meetings-assistant-theme";
 const defaultBackendUrl = "http://localhost:8000";
 const unclassifiedClient = "Drafts";
 const allProjects = "Todos los proyectos";
 const legacyExpandedRecorderEnabled = false;
+type AppTheme = "light" | "dark";
 
 const emptyRecordingSummary: RecordingSummary = {
   id: "",
@@ -176,6 +181,7 @@ export function App() {
   const [backendUrl, setBackendUrl] = useState(() => loadBackendUrl());
   const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => localStorage.getItem(transcriptionApiKeyStorageKey) ?? "");
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [theme, setTheme] = useState<AppTheme>(() => loadStoredTheme());
   const [cloudClients, setCloudClients] = useState<CloudClient[]>([]);
   const [cloudProjects, setCloudProjects] = useState<CloudProject[]>([]);
   const [cloudJobs, setCloudJobs] = useState<CloudJob[]>([]);
@@ -240,6 +246,12 @@ export function App() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.remove("light", "dark");
+    document.documentElement.classList.add(theme);
+    localStorage.setItem(themeStorageKey, theme);
+  }, [theme]);
 
   useEffect(() => {
     if (isWidgetWindow) {
@@ -719,7 +731,7 @@ export function App() {
             <button type="button" onClick={() => void minimizeWindow()} aria-label="Minimizar" title="Minimizar">
               <Minus />
             </button>
-            <button type="button" className="is-disabled" aria-label="Maximizar deshabilitado" title="No expandible">
+            <button type="button" onClick={() => void toggleWindowMaximize()} aria-label="Maximizar" title="Maximizar">
               <Maximize2 />
             </button>
             <button
@@ -782,9 +794,11 @@ export function App() {
           <section className="dashboard-shell">
             <aside className="library-sidebar">
               <div className="sidebar-brand" data-tauri-drag-region>
-                <span className="brand-mark"><Disc3 /></span>
+                <span className="brand-mark">
+                  <img src={appIcon} alt="" />
+                </span>
                 <div>
-                  <strong>Audio Library</strong>
+                  <strong>Meeting Assistant</strong>
                   <span>{recordings.length} audios</span>
                 </div>
               </div>
@@ -822,6 +836,29 @@ export function App() {
                   Configuracion
                 </button>
               </nav>
+
+              <div className="theme-switcher" aria-label="Tema">
+                <button
+                  type="button"
+                  className={clsx(theme === "light" && "is-selected")}
+                  onClick={() => setTheme("light")}
+                  aria-pressed={theme === "light"}
+                  title="Usar tema claro"
+                >
+                  <Sun />
+                  Claro
+                </button>
+                <button
+                  type="button"
+                  className={clsx(theme === "dark" && "is-selected")}
+                  onClick={() => setTheme("dark")}
+                  aria-pressed={theme === "dark"}
+                  title="Usar tema oscuro"
+                >
+                  <Moon />
+                  Oscuro
+                </button>
+              </div>
 
               {dashboardView === "library" && (
                 <nav className="client-nav" aria-label="Clientes">
@@ -990,15 +1027,6 @@ export function App() {
                       <div className="audio-focus-meta-pills">
                         <span>{formatDuration(audioDurationMs(selectedRow, audioDurationById))}</span>
                         <span>{formatDateTime(selectedRow.recording.started_at)}</span>
-                        {selectedCloudJob && (
-                          <span className="is-cloud">
-                            {selectedCloudJob.has_transcription && selectedCloudJob.has_analysis
-                              ? "Transcripcion + Analisis"
-                              : selectedCloudJob.has_transcription
-                                ? "Solo transcripcion"
-                                : "Cloud vinculado"}
-                          </span>
-                        )}
                       </div>
 
                       {/* Tab switcher integrated in top bar */}
@@ -1856,6 +1884,11 @@ function findCloudJobForRow(row: AudioRow, rows: AudioRow[], jobs: CloudJob[], l
 function isDraftClient(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return normalized === "drafts" || normalized === "sin clasificar";
+}
+
+function loadStoredTheme(): AppTheme {
+  const stored = localStorage.getItem(themeStorageKey);
+  return stored === "light" || stored === "dark" ? stored : "dark";
 }
 
 function audioJobCandidateNames(row: AudioRow): Set<string> {
