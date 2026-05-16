@@ -35,6 +35,9 @@
   --badge-saved-bg: #dbeafe;
   --badge-archived-text: #57534e;
   --badge-archived-bg: #e7e5e4;
+  --speaker-text: #0369a1;
+  --speaker-border: #38bdf8;
+  --speaker-bg: #e0f2fe;
 
   /* Geometry & Effects */
   --radius-sm: 6px;
@@ -86,6 +89,9 @@
   --badge-saved-bg: rgba(117, 155, 255, 0.16);
   --badge-archived-text: #c8c3b7;
   --badge-archived-bg: var(--bg-active);
+  --speaker-text: #7dd3fc;
+  --speaker-border: rgba(125, 211, 252, 0.45);
+  --speaker-bg: rgba(56, 189, 248, 0.12);
 
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
@@ -130,6 +136,9 @@
     --badge-saved-bg: rgba(117, 155, 255, 0.16);
     --badge-archived-text: #c8c3b7;
     --badge-archived-bg: var(--bg-active);
+    --speaker-text: #7dd3fc;
+    --speaker-border: rgba(125, 211, 252, 0.45);
+    --speaker-bg: rgba(56, 189, 248, 0.12);
 
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
     --shadow-md: 0 4px 12px rgba(0,0,0,0.4);

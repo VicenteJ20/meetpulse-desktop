@@ -1657,7 +1657,7 @@ button {
   min-height: 0;
   overflow: auto;
   padding: 28px 36px;
-  background: var(--bg-base);
+  background: var(--bg-panel);
 }
 
 
@@ -1787,9 +1787,9 @@ button {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #8bd7ff;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(125, 211, 252, 0.34);
+  color: var(--speaker-text);
+  background: var(--speaker-bg);
+  border: 1px solid var(--speaker-border);
   border-radius: var(--radius-sm);
   padding: 3px 8px;
   margin-top: 4px;
