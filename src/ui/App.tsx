@@ -75,6 +75,8 @@ import { SignalIcon } from "./components/recorder/SignalIcon";
 import { TrackWave } from "./components/recorder/TrackWave";
 import { WindowTitlebar } from "./components/layout/WindowTitlebar";
 import { CompactWidget } from "./components/layout/CompactWidget";
+import { LibrarySidebar } from "./components/layout/LibrarySidebar";
+import { AudioLibraryTable } from "./components/library/AudioLibraryTable";
 import {
   backendUrlStorageKey,
   loadAudioCloudJobs,
@@ -796,114 +798,22 @@ export function App() {
       ) : (
         <>
           <section className="dashboard-shell">
-            <aside className="library-sidebar">
-              <div className="sidebar-brand" data-tauri-drag-region>
-                <span className="brand-mark">
-                  <img src={appIcon} alt="" />
-                </span>
-                <div>
-                  <strong>Meeting Assistant</strong>
-                  <span>{recordings.length} audios</span>
-                </div>
-              </div>
-
-              <div className="quick-recorder">
-                <button
-                  type="button"
-                  className="recorder-launcher"
-                  onClick={() => {
-                    if (isTauriRuntime) {
-                      showWindow("widget");
-                    }
-                  }}
-                >
-                  <Mic />
-                  <span>Iniciar grabacion</span>
-                </button>
-              </div>
-
-              <nav className="workspace-nav" aria-label="Secciones">
-                <button
-                  type="button"
-                  className={clsx(dashboardView === "library" && "is-selected")}
-                  onClick={() => setDashboardView("library")}
-                >
-                  <ListMusic />
-                  Biblioteca
-                </button>
-                <button
-                  type="button"
-                  className={clsx(dashboardView === "settings" && "is-selected")}
-                  onClick={() => setDashboardView("settings")}
-                >
-                  <Settings />
-                  Configuracion
-                </button>
-              </nav>
-
-              <div className="theme-switcher" aria-label="Tema">
-                <button
-                  type="button"
-                  className={clsx(theme === "light" && "is-selected")}
-                  onClick={() => setTheme("light")}
-                  aria-pressed={theme === "light"}
-                  title="Usar tema claro"
-                >
-                  <Sun />
-                  Claro
-                </button>
-                <button
-                  type="button"
-                  className={clsx(theme === "dark" && "is-selected")}
-                  onClick={() => setTheme("dark")}
-                  aria-pressed={theme === "dark"}
-                  title="Usar tema oscuro"
-                >
-                  <Moon />
-                  Oscuro
-                </button>
-              </div>
-
-              {dashboardView === "library" && (
-                <nav className="client-nav" aria-label="Clientes">
-                  <div className="nav-heading">
-                    <UserRound />
-                    <span>Clientes</span>
-                  </div>
-                  {clients.map((client) => (
-                    <button
-                      key={client.name}
-                      type="button"
-                      className={clsx("client-nav-item", selectedClient === client.name && "is-selected")}
-                      onClick={() => {
-                        setSelectedClient(client.name);
-                        setSelectedProject(allProjects);
-                        setSelectedRecordingId(null);
-                        setExpandedRecordingId(null);
-                      }}
-                    >
-                      <span>{client.name}</span>
-                      <strong>{client.count}</strong>
-                    </button>
-                  ))}
-                </nav>
-              )}
-
-              <a
-                className="developer-link"
-                href="https://vicentejorquera.dev"
-                target="_blank"
-                rel="noreferrer"
-                title="vicentejorquera.dev"
-                onClick={(event) => {
-                  event.preventDefault();
-                  void openExternalUrl("https://vicentejorquera.dev");
-                }}
-              >
-                Vicente Jorquera
-                <ExternalLink />
-              </a>
-            </aside>
+            <LibrarySidebar
+              appIcon={appIcon}
+              recordingsCount={recordings.length}
+              dashboardView={dashboardView}
+              theme={theme}
+              clients={clients}
+              selectedClient={selectedClient}
+              onDashboardViewChange={setDashboardView}
+              onThemeChange={setTheme}
+              onClientSelect={(client) => {
+                setSelectedClient(client);
+                setSelectedProject(allProjects);
+                setSelectedRecordingId(null);
+                setExpandedRecordingId(null);
+              }}
+            />
 
             <div className="dashboard-main">
               <header className="dashboard-topbar" data-tauri-drag-region>
@@ -1107,43 +1017,12 @@ export function App() {
                     </div>
                   </section>
                 ) : (
-                  <section className="audio-library">
-                    <div className="section-head">
-                      <div>
-                        <p>Audios</p>
-                        <h2>{filteredRows.length} resultados</h2>
-                      </div>
-                      <span><SlidersHorizontal /> Datos</span>
-                    </div>
-
-                    <div className="audio-table" role="list">
-                      {filteredRows.length === 0 ? (
-                        <div className="empty-state">
-                          <ListMusic />
-                          <p>No hay audios para esta vista.</p>
-                        </div>
-                      ) : (
-                        filteredRows.map((row) => (
-                          <button
-                            key={row.recording.id}
-                            type="button"
-                            className={clsx("audio-row", selectedRecordingId === row.recording.id && "is-selected")}
-                            onClick={() => handleSelectRecording(row)}
-                          >
-                            <span className="audio-index"><FileAudio /></span>
-                            <span className="audio-title">
-                              <strong>{row.displayName}</strong>
-                              <small>{formatDateTime(row.recording.started_at)}</small>
-                            </span>
-                            <span className="audio-client">{row.client}</span>
-                            <span className="audio-project">{row.project}</span>
-                            <span className="audio-duration">{formatDuration(audioDurationMs(row, audioDurationById))}</span>
-                            <StatusBadge state={row.status} />
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </section>
+                  <AudioLibraryTable
+                    filteredRows={filteredRows}
+                    selectedRecordingId={selectedRecordingId}
+                    onSelectRecording={handleSelectRecording}
+                    audioDurationById={audioDurationById}
+                  />
                 )}
 
                 <aside className="details-panel">
