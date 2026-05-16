@@ -79,6 +79,8 @@ import { LibrarySidebar } from "./components/layout/LibrarySidebar";
 import { AudioLibraryTable } from "./components/library/AudioLibraryTable";
 import { SettingsPanel } from "./components/layout/SettingsPanel";
 import { DetailsPanel } from "./components/layout/DetailsPanel";
+import { AudioFocusView } from "./components/layout/AudioFocusView";
+import { PlayerBar } from "./components/layout/PlayerBar";
 import {
   backendUrlStorageKey,
   loadAudioCloudJobs,
@@ -883,102 +885,24 @@ export function App() {
 
                   <div className="content-grid">
                 {expandedContentOpen && selectedRow ? (
-                <section className="audio-focus">
-                    {/* ── Top bar ───────────────────────────────────── */}
-                    <div className="audio-focus-bar">
-                      <button
-                        type="button"
-                        className="audio-focus-back"
-                        onClick={() => setExpandedRecordingId(null)}
-                        aria-label="Volver a la lista"
-                        title="Volver a la lista"
-                      >
-                        <ChevronRight />
-                      </button>
-
-                      <div className="audio-focus-identity">
-                        <span className="audio-focus-crumb">{selectedRow.client} / {selectedRow.project}</span>
-                        <h2 className="audio-focus-title">{selectedRow.displayName}</h2>
-                      </div>
-
-                      <div className="audio-focus-meta-pills">
-                        <span>{formatDuration(audioDurationMs(selectedRow, audioDurationById))}</span>
-                        <span>{formatDateTime(selectedRow.recording.started_at)}</span>
-                      </div>
-
-                      {/* Tab switcher integrated in top bar */}
-                      <div className="audio-focus-tabs" role="tablist" aria-label="Contenido del job">
-                        <button
-                          type="button"
-                          className={clsx(artifactTab === "transcription" && "is-active", !selectedCloudJob?.has_transcription && "is-unavailable")}
-                          onClick={() => setArtifactTab("transcription")}
-                          aria-selected={artifactTab === "transcription"}
-                        >
-                          <FileText size={13} />
-                          Transcripcion
-                        </button>
-                        <button
-                          type="button"
-                          className={clsx(artifactTab === "analysis" && "is-active", !selectedCloudJob?.has_analysis && "is-unavailable")}
-                          onClick={() => setArtifactTab("analysis")}
-                          aria-selected={artifactTab === "analysis"}
-                        >
-                          <Sparkles size={13} />
-                          Analisis
-                        </button>
-                      </div>
-
-                      <div className="audio-focus-copy-group" aria-label="Opciones de copia">
-                        <div className="copy-format-toggle" role="group" aria-label="Formato de copia">
-                          <button
-                            type="button"
-                            className={clsx(artifactCopyFormat === "plain" && "is-active")}
-                            onClick={() => setArtifactCopyFormat("plain")}
-                          >
-                            Texto
-                          </button>
-                          <button
-                            type="button"
-                            className={clsx(artifactCopyFormat === "markdown" && "is-active")}
-                            onClick={() => setArtifactCopyFormat("markdown")}
-                          >
-                            Markdown
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          className={clsx("audio-focus-copy", artifactCopyState === "copied" && "is-copied", artifactCopyState === "error" && "is-error")}
-                          onClick={() => void handleCopyArtifact()}
-                          disabled={!selectedArtifactContent?.trim()}
-                          title={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"} como ${artifactCopyFormat === "markdown" ? "Markdown" : "texto"}`}
-                          aria-label={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"} como ${artifactCopyFormat === "markdown" ? "Markdown" : "texto"}`}
-                        >
-                          {artifactCopyState === "copied" ? <CheckCircle2 size={15} /> : <Copy size={15} />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* ── Content area ──────────────────────────────── */}
-                    <div className="markdown-stage" data-tab={artifactTab}>
-                      {artifactLoading ? (
-                        <div className="lyrics-empty"><Loader2 className="is-spinning" /> Cargando contenido</div>
-                      ) : cloudSyncing && !selectedCloudJob ? (
-                        <div className="lyrics-empty"><Loader2 className="is-spinning" /> Buscando contenido cloud</div>
-                      ) : artifactError ? (
-                        <div className="lyrics-empty is-error">{artifactError}</div>
-                      ) : cloudSyncError && !selectedCloudJob ? (
-                        <div className="lyrics-empty is-error">{cloudSyncError}</div>
-                      ) : selectedArtifactBlocks.length > 0 ? (
-                        <div className={clsx("markdown-body", artifactTab === "transcription" && "is-transcript")}>
-                          {selectedArtifactBlocks.map((block, index) => <MarkdownBlock key={`${artifactTab}-${index}`} block={block} tab={artifactTab} />)}
-                        </div>
-                      ) : (
-                        <div className="lyrics-empty">
-                          {selectedCloudJob ? "Contenido no disponible para este job." : "Sin contenido cloud asociado a este audio."}
-                        </div>
-                      )}
-                    </div>
-                  </section>
+                <AudioFocusView
+                  selectedRow={selectedRow}
+                  selectedCloudJob={selectedCloudJob}
+                  artifactTab={artifactTab}
+                  artifactCopyFormat={artifactCopyFormat}
+                  artifactCopyState={artifactCopyState}
+                  artifactLoading={artifactLoading}
+                  cloudSyncing={cloudSyncing}
+                  artifactError={artifactError}
+                  cloudSyncError={cloudSyncError}
+                  selectedArtifactBlocks={selectedArtifactBlocks}
+                  selectedArtifactContent={selectedArtifactContent}
+                  audioDurationById={audioDurationById}
+                  onBack={() => setExpandedRecordingId(null)}
+                  onTabChange={setArtifactTab}
+                  onCopyFormatChange={setArtifactCopyFormat}
+                  onCopy={handleCopyArtifact}
+                />
                 ) : (
                   <AudioLibraryTable
                     filteredRows={filteredRows}
@@ -1019,74 +943,38 @@ export function App() {
                 />
                   </div>
 
-                  <div className="player-bar">
-                <div className="player-now">
-                  <span><Disc3 /></span>
-                  <div>
-                    <strong>{activeRow?.displayName ?? "Sin audio seleccionado"}</strong>
-                    <small>{activeRow ? `${activeRow.client} / ${activeRow.project}` : "El reproductor queda listo al seleccionar un audio"}</small>
-                  </div>
-                </div>
-                {activeAudioSrc ? (
-                  <div className="player-controls">
-                    <button type="button" onClick={() => void handlePlayerPlay()} disabled={!playbackAudioSrc || playerLoading || playerPlaying} aria-label="Reproducir" title="Reproducir">
-                      <Play />
-                    </button>
-                    <button type="button" onClick={handlePlayerPause} disabled={!playbackAudioSrc || !playerPlaying} aria-label="Pausar" title="Pausar">
-                      <Pause />
-                    </button>
-                    <button type="button" onClick={handlePlayerStop} disabled={!playbackAudioSrc} aria-label="Detener" title="Detener">
-                      <Square />
-                    </button>
-                    <div className="player-progress" aria-label="Progreso">
-                      <span>{formatDuration(playerCurrentMs)}</span>
-                      <input
-                        type="range"
-                        min={0}
-                        max={Math.max(visiblePlayerDuration, 1)}
-                        value={Math.min(playerCurrentMs, Math.max(visiblePlayerDuration, 1))}
-                        disabled={!playbackAudioSrc || playerLoading}
-                        onChange={(event) => {
-                          const nextMs = Number(event.currentTarget.value);
-                          lastPlayerUiUpdateRef.current = 0;
-                          setPlayerCurrentMs(nextMs);
-                          if (audioRef.current) {
-                            audioRef.current.currentTime = nextMs / 1000;
-                          }
-                        }}
-                        aria-label="Adelantar o retroceder audio"
-              />
-                      <span>{formatDuration(visiblePlayerDuration)}</span>
-                    </div>
-                    <audio
-                      ref={audioRef}
-                      key={playbackAudioSrc || activeAudioSrc}
-                      preload="auto"
-                      src={playbackAudioSrc || undefined}
-                      onLoadedMetadata={(event) => {
-                        const seconds = event.currentTarget.duration;
-                        const nextDurationMs = Number.isFinite(seconds) ? Math.round(seconds * 1000) : 0;
-                        handlePlayerTimeUpdate(event.currentTarget.currentTime, true);
-                        setPlayerDurationMs(nextDurationMs);
-                        if (activeRow && nextDurationMs > 0) {
-                          setAudioDurationById((current) => ({ ...current, [activeRow.recording.id]: nextDurationMs }));
-                        }
-                      }}
-                      onTimeUpdate={(event) => handlePlayerTimeUpdate(event.currentTarget.currentTime)}
-                      onPause={() => setPlayerPlaying(false)}
-                      onPlay={() => setPlayerPlaying(true)}
-                      onEnded={handlePlayerStop}
-                      onError={() => {
-                        setPlayerPlaying(false);
-                        setPlayerError("No se pudo cargar el archivo de audio");
-                      }}
-                    />
-                    {(playerLoading || playerError) && <span className="player-error">{playerLoading ? "Preparando audio..." : playerError}</span>}
-                  </div>
-                ) : (
-                  <div className="player-placeholder">Audio no disponible</div>
-                )}
-                  </div>
+                  <PlayerBar
+                    activeRow={activeRow}
+                    activeAudioSrc={activeAudioSrc}
+                    playbackAudioSrc={playbackAudioSrc}
+                    playerCurrentMs={playerCurrentMs}
+                    playerDurationMs={playerDurationMs}
+                    visiblePlayerDuration={visiblePlayerDuration}
+                    playerPlaying={playerPlaying}
+                    playerLoading={playerLoading}
+                    playerError={playerError}
+                    audioRef={audioRef}
+                    onPlay={() => void handlePlayerPlay()}
+                    onPause={handlePlayerPause}
+                    onStop={handlePlayerStop}
+                    onTimeChange={(ms) => {
+                      lastPlayerUiUpdateRef.current = 0;
+                      setPlayerCurrentMs(ms);
+                      if (audioRef.current) {
+                        audioRef.current.currentTime = ms / 1000;
+                      }
+                    }}
+                    onLoadedMetadata={(event) => {
+                      const seconds = event.currentTarget.duration;
+                      const nextDurationMs = Number.isFinite(seconds) ? Math.round(seconds * 1000) : 0;
+                      handlePlayerTimeUpdate(event.currentTarget.currentTime, true);
+                      setPlayerDurationMs(nextDurationMs);
+                    }}
+                    onTimeUpdate={(event) => handlePlayerTimeUpdate(event.currentTarget.currentTime)}
+                    activeRowDurationUpdate={(id, durationMs) => {
+                      setAudioDurationById((current) => ({ ...current, [id]: durationMs }));
+                    }}
+                  />
                 </>
               )}
 
