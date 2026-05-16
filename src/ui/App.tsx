@@ -594,6 +594,19 @@ export function App() {
       ?? sanitizeRelativePathPart(clientName);
   }
 
+  function localRowsLinkedToCloudJob(jobId: string) {
+    return localAudioRows.filter((row) => row.cloudJobId === jobId || cloudJobByRecordingId[row.recording.id] === jobId);
+  }
+
+  function localRowsForClient(clientName: string, cloudJobIds: Set<string>) {
+    return localAudioRows.filter(
+      (row) =>
+        row.client === clientName ||
+        Boolean(row.cloudJobId && cloudJobIds.has(row.cloudJobId)) ||
+        Boolean(cloudJobByRecordingId[row.recording.id] && cloudJobIds.has(cloudJobByRecordingId[row.recording.id])),
+    );
+  }
+
   async function handleArchiveAudio(row: AudioRow) {
     const confirmed = window.confirm(`Archivar "${row.displayName}"? Se ocultara de la biblioteca, pero no se borraran sus archivos.`);
     if (!confirmed) return;
@@ -604,6 +617,10 @@ export function App() {
     try {
       if (row.source === "cloud" && row.cloudJobId) {
         await archiveCloudJob(row.cloudJobId);
+        localRowsLinkedToCloudJob(row.cloudJobId).forEach((localRow) => {
+          updateAudioMetadata(localRow.recording.id, { ...localRow.metadata, draftState: "archived" });
+          removeAudioCloudJob(localRow.recording.id);
+        });
         await refreshCloudDashboard({ showMessage: false });
       } else {
         updateAudioMetadata(row.recording.id, { ...row.metadata, draftState: "archived" });
@@ -628,6 +645,9 @@ export function App() {
     try {
       if (row.source === "cloud" && row.cloudJobId) {
         await deleteCloudJob(row.cloudJobId);
+        const linkedLocalRows = localRowsLinkedToCloudJob(row.cloudJobId);
+        await Promise.all(linkedLocalRows.map((localRow) => cleanupLocalRecording(localRow.recording.id)));
+        linkedLocalRows.forEach((localRow) => removeAudioCloudJob(localRow.recording.id));
         await refreshCloudDashboard({ showMessage: false });
       } else {
         await cleanupLocalRecording(row.recording.id);
@@ -650,10 +670,16 @@ export function App() {
     setLibraryActionError(null);
     try {
       const clientSlug = clientSlugForName(clientName);
+      const affectedCloudJobIds = new Set(
+        cloudAudioRows
+          .filter((row) => row.client === clientName || row.clientSlug === clientSlug)
+          .map((row) => row.cloudJobId)
+          .filter((jobId): jobId is string => Boolean(jobId)),
+      );
+      const localRows = localRowsForClient(clientName, affectedCloudJobIds);
       await archiveCloudClient(clientSlug);
-      audioRows
-        .filter((row) => row.client === clientName && row.source === "local")
-        .forEach((row) => updateAudioMetadata(row.recording.id, { ...row.metadata, draftState: "archived" }));
+      localRows.forEach((row) => updateAudioMetadata(row.recording.id, { ...row.metadata, draftState: "archived" }));
+      localRows.forEach((row) => removeAudioCloudJob(row.recording.id));
       clearAudioSelection();
       setSelectedClient(unclassifiedClient);
       await refreshCloudDashboard({ showMessage: false });
@@ -671,8 +697,14 @@ export function App() {
     setLibraryActionError(null);
     try {
       const clientSlug = clientSlugForName(clientName);
+      const affectedCloudJobIds = new Set(
+        cloudAudioRows
+          .filter((row) => row.client === clientName || row.clientSlug === clientSlug)
+          .map((row) => row.cloudJobId)
+          .filter((jobId): jobId is string => Boolean(jobId)),
+      );
+      const localRows = localRowsForClient(clientName, affectedCloudJobIds);
       await deleteCloudClient(clientSlug);
-      const localRows = audioRows.filter((row) => row.client === clientName && row.source === "local");
       await Promise.all(localRows.map((row) => cleanupLocalRecording(row.recording.id)));
       localRows.forEach((row) => removeAudioCloudJob(row.recording.id));
       clearAudioSelection();
