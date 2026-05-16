@@ -77,6 +77,8 @@ import { WindowTitlebar } from "./components/layout/WindowTitlebar";
 import { CompactWidget } from "./components/layout/CompactWidget";
 import { LibrarySidebar } from "./components/layout/LibrarySidebar";
 import { AudioLibraryTable } from "./components/library/AudioLibraryTable";
+import { SettingsPanel } from "./components/layout/SettingsPanel";
+import { DetailsPanel } from "./components/layout/DetailsPanel";
 import {
   backendUrlStorageKey,
   loadAudioCloudJobs,
@@ -839,59 +841,20 @@ export function App() {
               </header>
 
               {dashboardView === "settings" ? (
-                <section className="settings-panel">
-                  <div className="section-head">
-                    <div>
-                      <p>Sincronizacion de servicios</p>
-                      <h2>Servicios Cloud</h2>
-                    </div>
-                    <span><Settings /> Sistema</span>
-                  </div>
-
-                  <div className="settings-form">
-                    <div className="cloud-sync-panel">
-                      <div className="cloud-sync-head">
-                        <div>
-                          <span>Sincronizacion nube</span>
-                          <strong>{cloudSyncedAt ? formatDateTime(cloudSyncedAt) : "Sin sincronizar"}</strong>
-                        </div>
-                        <button type="button" onClick={() => void handleSyncCloudDashboard()} disabled={cloudSyncing}>
-                          {cloudSyncing ? <Loader2 className="is-spinning" /> : <History />}
-                          {cloudSyncing ? "Sincronizando" : "Sincronizar"}
-                        </button>
-                      </div>
-                      <div className="cloud-sync-counts">
-                        <span><strong>{cloudClients.length}</strong> clientes</span>
-                        <span><strong>{cloudProjects.length}</strong> proyectos</span>
-                        <span><strong>{cloudJobs.length}</strong> jobs</span>
-                      </div>
-                    </div>
-                    <div className="google-auth-panel">
-                      <div className="google-auth-head">
-                        <div>
-                          <span>Autenticacion Google</span>
-                          <strong>{authState?.is_authenticated ? authState.email ?? "Conectado" : "No conectado"}</strong>
-                        </div>
-                        {authState?.is_authenticated ? (
-                          <button type="button" onClick={() => void logout()} disabled={useAuthStore.getState().loading}>
-                            {useAuthStore.getState().loading ? <Loader2 className="is-spinning" /> : <X />}
-                            {useAuthStore.getState().loading ? "Cerrando" : "Desconectar"}
-                          </button>
-                        ) : (
-                          <button type="button" onClick={() => void login()} disabled={useAuthStore.getState().loading}>
-                            {useAuthStore.getState().loading ? <Loader2 className="is-spinning" /> : <UserRound />}
-                            {useAuthStore.getState().loading ? "Conectando" : "Iniciar sesion con Google"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {(settingsMessage || cloudSyncError) && (
-                      <p className={clsx("save-message details-save-message", cloudSyncError && "is-error")}>
-                        {cloudSyncError ?? settingsMessage}
-                      </p>
-                    )}
-                  </div>
-                </section>
+                <SettingsPanel
+                  cloudSyncedAt={cloudSyncedAt}
+                  cloudSyncing={cloudSyncing}
+                  cloudClientsCount={cloudClients.length}
+                  cloudProjectsCount={cloudProjects.length}
+                  cloudJobsCount={cloudJobs.length}
+                  authState={authState}
+                  onSync={handleSyncCloudDashboard}
+                  onLogin={() => void login()}
+                  onLogout={() => void logout()}
+                  authLoading={useAuthStore.getState().loading}
+                  message={settingsMessage}
+                  error={cloudSyncError}
+                />
               ) : (
                 <>
                   <div className="project-strip" aria-label="Proyectos">
@@ -1025,140 +988,35 @@ export function App() {
                   />
                 )}
 
-                <aside className="details-panel">
-                  {selectedRow ? (
-                    <>
-                      <div className="details-head">
-                        <div>
-                          <p>Audio seleccionado</p>
-                          <h2>{selectedRow.displayName}</h2>
-                        </div>
-                        <div className="details-head-badges">
-                          {selectedCloudJob && (
-                            <>
-                              <span
-                                className={clsx("cloud-badge", selectedCloudJob.has_transcription && "is-available")}
-                                title={selectedCloudJob.has_transcription ? "Transcripcion disponible" : "Sin transcripcion"}
-                              >
-                                <FileText />
-                              </span>
-                              <span
-                                className={clsx("cloud-badge", selectedCloudJob.has_analysis && "is-available")}
-                                title={selectedCloudJob.has_analysis ? "Analisis disponible" : "Sin analisis"}
-                              >
-                                <Sparkles />
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void handleOpenExpandedContent(selectedRow)}
-                          aria-label="Ver contenido cloud"
-                          title="Ver contenido cloud"
-                        >
-                          <Eye />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedRecordingId(null);
-                            setExpandedRecordingId(null);
-                          }}
-                          aria-label="Cerrar detalle"
-                          title="Cerrar detalle"
-                        >
-                          <X />
-                        </button>
-                      </div>
-
-                      <div className="details-summary">
-                        <div className="summary-item">
-                          <span><Clock3 /> Duracion</span>
-                          <strong>{formatDuration(audioDurationMs(selectedRow, audioDurationById))}</strong>
-                        </div>
-                        <div className="summary-item">
-                          <span><Tag /> Estado</span>
-                          <strong>{selectedRow.recording.status}</strong>
-                        </div>
-                      </div>
-
-                      <div className="details-section">
-                        <div className="details-section-title">
-                          <span>Datos del audio</span>
-                        </div>
-                        <div className="save-fields details-fields">
-                          <label className="field-control">
-                            <span>Nombre del audio</span>
-                            <input value={saveFileName} onChange={(event) => setSaveFileName(event.currentTarget.value)} placeholder={selectedRow.displayName} disabled={saving || selectedRow.source === "cloud"} />
-                          </label>
-                          <label className="field-control">
-                            <span>Cliente</span>
-                            <input value={saveClient} onChange={(event) => setSaveClient(event.currentTarget.value)} placeholder="Sin cliente" disabled={saving || selectedRow.source === "cloud"} />
-                          </label>
-                          <label className="field-control">
-                            <span>Proyecto</span>
-                            <input value={saveProject} onChange={(event) => setSaveProject(event.currentTarget.value)} placeholder="Sin proyecto" disabled={saving || selectedRow.source === "cloud"} />
-                          </label>
-                          <label className="field-control">
-                            <span>Notas internas</span>
-                            <textarea value={saveNotes} onChange={(event) => setSaveNotes(event.currentTarget.value)} placeholder="Notas internas" disabled={saving || selectedRow.source === "cloud"} />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="details-actions">
-                        <button type="button" className="details-action-btn" onClick={() => void openRecordingFolder(selectedRow.recording.id)} disabled={saving || selectedRow.source === "cloud"}>
-                          <FolderOpen size={15} />
-                          Abrir archivo
-                        </button>
-                        <button type="button" className="details-action-btn is-primary" onClick={() => void handleSave(selectedRow.recording.id, false)} disabled={saving || selectedRow.source === "cloud"}>
-                          <Save size={15} />
-                          Guardar
-                        </button>
-                        <button type="button" className="details-action-btn is-success" onClick={() => void handleSave(selectedRow.recording.id, true)} disabled={saving || selectedRow.source === "cloud"}>
-                          <ChevronRight size={15} />
-                          Drafts
-                        </button>
-                      </div>
-
-                      {(savedPath || saveError) && (
-                        <p className={clsx("save-message details-save-message", saveError && "is-error")}>
-                          {saveError ?? `Guardado en ${savedPath}`}
-                        </p>
-                      )}
-
-                      <div className="details-section analysis-section">
-                        <button
-                          type="button"
-                          className="analysis-button"
-                          onClick={() => void handleRequestAnalysis(selectedRow)}
-                          disabled={analysisSubmitting || (!selectedCanRequestAnalysis && !selectedCanRetryAnalysis)}
-                          title={
-                            selectedCanRetryAnalysis
-                              ? "Volver a generar el analisis desde la transcripcion guardada"
-                              : selectedCanRequestAnalysis
-                                ? "Solicitar analisis"
-                                : "Clasifica el audio o vincula una transcripcion antes de solicitar analisis"
-                          }
-                        >
-                          {analysisSubmitting ? <Loader2 className="is-spinning" /> : <Sparkles size={16} />}
-                          {analysisSubmitting ? "Solicitando..." : selectedCanRetryAnalysis ? "Reanalizar" : "Solicitar analisis"}
-                        </button>
-                        {(analysisMessage || analysisError) && (
-                          <p className={clsx("save-message details-save-message", analysisError && "is-error")}>
-                            {analysisError ?? analysisMessage}
-                          </p>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="details-empty">
-                      <FileAudio />
-                      <p>Selecciona un audio para clasificarlo, guardarlo o enviarlo a drafts.</p>
-                    </div>
-                  )}
-                </aside>
+                <DetailsPanel
+                  selectedRow={selectedRow}
+                  selectedCloudJob={selectedCloudJob}
+                  saveFileName={saveFileName}
+                  saveClient={saveClient}
+                  saveProject={saveProject}
+                  saveNotes={saveNotes}
+                  saving={saving}
+                  savedPath={savedPath}
+                  saveError={saveError}
+                  analysisSubmitting={analysisSubmitting}
+                  analysisMessage={analysisMessage}
+                  analysisError={analysisError}
+                  selectedCanRequestAnalysis={selectedCanRequestAnalysis}
+                  selectedCanRetryAnalysis={selectedCanRetryAnalysis}
+                  audioDurationById={audioDurationById}
+                  onFileNameChange={setSaveFileName}
+                  onClientChange={setSaveClient}
+                  onProjectChange={setSaveProject}
+                  onNotesChange={setSaveNotes}
+                  onSave={handleSave}
+                  onOpenFolder={openRecordingFolder}
+                  onRequestAnalysis={handleRequestAnalysis}
+                  onOpenExpanded={handleOpenExpandedContent}
+                  onClose={() => {
+                    setSelectedRecordingId(null);
+                    setExpandedRecordingId(null);
+                  }}
+                />
                   </div>
 
                   <div className="player-bar">
@@ -1197,7 +1055,7 @@ export function App() {
                           }
                         }}
                         aria-label="Adelantar o retroceder audio"
-                      />
+              />
                       <span>{formatDuration(visiblePlayerDuration)}</span>
                     </div>
                     <audio
