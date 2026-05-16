@@ -1,6 +1,5 @@
 import { clsx } from "clsx";
-
-type DraftState = "unclassified" | "classified" | "draft_ready" | "draft_saved" | "archived";
+import type { DraftState } from "../../lib/audioTypes";
 
 export function StatusBadge({ state }: { state: DraftState }) {
   const label = {

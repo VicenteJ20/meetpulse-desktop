@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   ChevronRight,
   CheckCircle2,
@@ -68,29 +67,55 @@ import { useAuthStore } from "../store/authStore";
 import { useRecorderStore } from "../store/recorderStore";
 import { LoginScreen } from "./Login";
 import { StatusBadge } from "./components/library/StatusBadge";
-import { MarkdownBlock, type MarkdownBlockData } from "./components/markdown/MarkdownBlock";
+import { MarkdownBlock } from "./components/markdown/MarkdownBlock";
 import { ControlButton } from "./components/recorder/ControlButton";
 import { DeviceSelect } from "./components/recorder/DeviceSelect";
 import { MiniButton } from "./components/recorder/MiniButton";
 import { SignalIcon } from "./components/recorder/SignalIcon";
 import { TrackWave } from "./components/recorder/TrackWave";
+import { WindowTitlebar } from "./components/layout/WindowTitlebar";
+import { CompactWidget } from "./components/layout/CompactWidget";
+import {
+  backendUrlStorageKey,
+  loadAudioCloudJobs,
+  loadAudioMetadata,
+  loadBackendUrl,
+  loadStoredTheme,
+  normalizeBackendUrl,
+  saveAudioCloudJobs,
+  saveAudioMetadata,
+  themeStorageKey,
+  transcriptionApiKeyStorageKey,
+} from "./lib/appStorage";
+import {
+  audioDurationMs,
+  buildClientGroups,
+  buildProjectsForClient,
+  displayRecordingName,
+  inferMetadata,
+  isDraftClient,
+  recordingAudioPath,
+  resolveAudioStatus,
+  toPlayableAudioSrc,
+} from "./lib/audioLibrary";
+import type { AppTheme, AudioMetadata, AudioRow, CloudClient, CloudJob, CloudProject } from "./lib/audioTypes";
+import { copyTextToClipboard } from "./lib/clipboard";
+import {
+  cloudJobToAudioRow,
+  findCloudJobForRow,
+  mergeClientGroups,
+  mergeProjectsForClient,
+  parseCloudClients,
+  parseCloudJobs,
+  parseCloudProjects,
+} from "./lib/cloudLibrary";
+import { formatDateTime } from "./lib/dateFormat";
+import { allProjects, unclassifiedClient } from "./lib/libraryConstants";
+import { markdownBlocksToPlainText, parseMarkdownBlocks } from "./lib/markdown";
+import { createMeterBars, formatWidgetDuration, statusSubtitle, statusTitle } from "./lib/recordingUi";
+import { parseTranscriptionAccepted, requestBrowserTranscription, responseErrorMessage } from "./lib/transcription";
 
-const bars = [
-  0.52, 0.7, 0.38, 0.78, 0.66, 0.46, 0.3, 0.58, 0.24, 0.51, 0.72, 0.37, 0.44, 0.64, 0.29, 0.53, 0.4, 0.62,
-  0.35, 0.75, 0.28, 0.45, 0.59, 0.33, 0.49, 0.71, 0.39, 0.56, 0.48, 0.8, 0.34, 0.61, 0.4, 0.68, 0.3, 0.54,
-  0.44, 0.76, 0.36, 0.58,
-];
-
-const audioMetadataStorageKey = "meetings-assistant-audio-metadata";
-const audioCloudJobStorageKey = "meetings-assistant-audio-cloud-jobs";
-const backendUrlStorageKey = "meetings-assistant-backend-url";
-const transcriptionApiKeyStorageKey = "meetings-assistant-transcription-api-key";
-const themeStorageKey = "meetings-assistant-theme";
-const defaultBackendUrl = "http://localhost:8000";
-const unclassifiedClient = "Drafts";
-const allProjects = "Todos los proyectos";
 const legacyExpandedRecorderEnabled = false;
-type AppTheme = "light" | "dark";
 
 const emptyRecordingSummary: RecordingSummary = {
   id: "",
@@ -102,57 +127,6 @@ const emptyRecordingSummary: RecordingSummary = {
   final_audio_path: null,
   segments: 0,
   size_bytes: 0,
-};
-
-type DraftState = "unclassified" | "classified" | "draft_ready" | "draft_saved" | "archived";
-
-type AudioMetadata = {
-  client: string;
-  project: string;
-  title: string;
-  notes: string;
-  draftState: DraftState;
-};
-
-type AudioRow = {
-  recording: RecordingSummary;
-  metadata: AudioMetadata;
-  displayName: string;
-  client: string;
-  project: string;
-  status: DraftState;
-  source: "local" | "cloud";
-  cloudJobId?: string;
-};
-
-type CloudClient = {
-  slug: string;
-  display_name: string;
-  status?: string;
-  projects?: string[];
-  tags?: string[];
-};
-
-type CloudProject = {
-  slug: string;
-  display_name: string;
-  client: string;
-  status?: string;
-};
-
-type CloudJob = {
-  job_id: string;
-  source_filename: string;
-  source_size_bytes?: number;
-  source_duration_ms?: number | null;
-  relative_path?: string;
-  status: string;
-  accepted_at?: string;
-  completed_at?: string | null;
-  has_audio?: boolean;
-  audio_url?: string | null;
-  has_transcription?: boolean;
-  has_analysis?: boolean;
 };
 
 export function App() {
@@ -791,82 +765,34 @@ export function App() {
   return (
     <main className={clsx("widget-shell", compactView && "is-compact")}>
       {!compactView && (
-        <header
-          className="windows-titlebar"
-          data-tauri-drag-region
+        <WindowTitlebar
+          icon={appIcon}
+          pinned={pinned}
           onPointerDown={handleTitlebarPointerDown}
-        >
-          <div className="window-brand" data-tauri-drag-region>
-            <img className="window-icon" src={appIcon} alt="" data-tauri-drag-region />
-            <span data-tauri-drag-region>Meetings Assistant</span>
-          </div>
-          <div
-            className="window-actions"
-            onMouseDown={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <button type="button" onClick={() => void minimizeWindow()} aria-label="Minimizar" title="Minimizar">
-              <Minus />
-            </button>
-            <button type="button" onClick={() => void toggleWindowMaximize()} aria-label="Maximizar" title="Maximizar">
-              <Maximize2 />
-            </button>
-            <button
-              type="button"
-              className={clsx(pinned && "is-active")}
-              onClick={() => setPinned((value) => !value)}
-              aria-label={pinned ? "Quitar siempre encima" : "Mantener encima"}
-              title={pinned ? "Quitar siempre encima" : "Mantener encima"}
-            >
-              <Pin />
-            </button>
-            <button type="button" className="close" onClick={() => void closeWindow()} aria-label="Cerrar" title="Cerrar">
-              <X />
-            </button>
-          </div>
-        </header>
+          onTogglePinned={() => setPinned((value) => !value)}
+          onMinimize={() => void minimizeWindow()}
+          onMaximize={() => void toggleWindowMaximize()}
+          onClose={() => void closeWindow()}
+        />
       )}
 
       {compactView ? (
-        <section className="compact-recorder" onPointerDown={handleTitlebarPointerDown}>
-          <div className="compact-status">
-            <SignalIcon icon={<Mic />} active={isRecording && micLevel > 0.01} color="mic" label="Microfono" />
-            <SignalIcon icon={<MonitorSpeaker />} active={isRecording && systemLevel > 0.01} color="system" label="Equipo" />
-          </div>
-          <span className="compact-time">{duration}</span>
-          <div className="compact-controls">
-            <MiniButton
-              label={isPaused ? "Reanudar" : isRecording ? "Pausar" : "Grabar"}
-              icon={isRecording ? <Pause /> : <Play />}
-              disabled={isBusy}
-              active={isRecording}
-              onClick={handlePrimary}
-            />
-            <MiniButton
-              label="Finalizar"
-              icon={<Square />}
-              disabled={isBusy || !isActive}
-              onClick={() => void stop()}
-            />
-            <MiniButton
-              label="Ocultar widget"
-              icon={<Minus />}
-              onClick={() => void closeWindow()}
-            />
-            <MiniButton
-              label={pinned ? "Desfijar widget" : "Fijar widget"}
-              icon={<Pin />}
-              active={pinned}
-              onClick={() => setPinned((value) => !value)}
-            />
-            <MiniButton
-              label="Vista completa"
-              icon={<Maximize2 />}
-              onClick={() => toggleCompactMode(false)}
-            />
-          </div>
-        </section>
+        <CompactWidget
+          duration={duration}
+          isRecording={isRecording}
+          isPaused={isPaused}
+          isBusy={isBusy}
+          isActive={isActive}
+          micLevel={micLevel}
+          systemLevel={systemLevel}
+          pinned={pinned}
+          onPrimary={handlePrimary}
+          onStop={() => void stop()}
+          onClose={() => void closeWindow()}
+          onTogglePinned={() => setPinned((value) => !value)}
+          onExpand={() => toggleCompactMode(false)}
+          onPointerDown={handleTitlebarPointerDown}
+        />
       ) : (
         <>
           <section className="dashboard-shell">
@@ -1634,754 +1560,6 @@ export function App() {
       )}
     </main>
   );
-}
-
-function loadAudioMetadata(): Record<string, AudioMetadata> {
-  try {
-    const raw = localStorage.getItem(audioMetadataStorageKey);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, AudioMetadata>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveAudioMetadata(metadata: Record<string, AudioMetadata>) {
-  localStorage.setItem(audioMetadataStorageKey, JSON.stringify(metadata));
-}
-
-function loadAudioCloudJobs(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(audioCloudJobStorageKey);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, string>;
-    if (!parsed || typeof parsed !== "object") return {};
-    return Object.fromEntries(Object.entries(parsed).filter(([, jobId]) => typeof jobId === "string"));
-  } catch {
-    return {};
-  }
-}
-
-function saveAudioCloudJobs(value: Record<string, string>) {
-  localStorage.setItem(audioCloudJobStorageKey, JSON.stringify(value));
-}
-
-function loadBackendUrl(): string {
-  const savedBackendUrl = localStorage.getItem(backendUrlStorageKey);
-  if (savedBackendUrl) return savedBackendUrl;
-
-  const legacyEndpoint = localStorage.getItem("meetings-assistant-transcription-endpoint");
-  if (!legacyEndpoint) return defaultBackendUrl;
-
-  try {
-    const url = new URL(legacyEndpoint);
-    return `${url.protocol}//${url.host}`;
-  } catch {
-    return defaultBackendUrl;
-  }
-}
-
-function normalizeBackendUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  if (!trimmed) return "";
-
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== "http:") return "";
-    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`;
-  } catch {
-    return "";
-  }
-}
-
-function mergeClientGroups(localClients: { name: string; count: number }[], cloudClients: CloudClient[]) {
-  const merged = new Map(localClients.map((client) => [client.name, client]));
-
-  cloudClients.forEach((client) => {
-    const name = client.display_name || client.slug;
-    if (!merged.has(name)) {
-      merged.set(name, { name, count: 0 });
-    }
-  });
-
-  return Array.from(merged.values()).sort((left, right) => {
-    if (left.name === unclassifiedClient) return -1;
-    if (right.name === unclassifiedClient) return 1;
-    return left.name.localeCompare(right.name);
-  });
-}
-
-function mergeProjectsForClient(
-  localProjects: { name: string; count: number }[],
-  cloudProjects: CloudProject[],
-  cloudClients: CloudClient[],
-  cloudJobs: CloudJob[],
-  selectedClient: string,
-) {
-  const selectedCloudClient = cloudClients.find(
-    (client) => client.display_name === selectedClient || client.slug === selectedClient,
-  );
-  const selectedClientSlug = selectedCloudClient?.slug ?? selectedClient;
-  const merged = new Map(localProjects.map((project) => [project.name, project]));
-
-  cloudProjects
-    .filter((project) => project.client === selectedClientSlug)
-    .forEach((project) => {
-      const name = project.display_name || project.slug;
-      if (!merged.has(name)) {
-        merged.set(name, { name, count: 0 });
-      }
-    });
-
-  return Array.from(merged.values()).map((project) => {
-    const relativePath = transcriptionRelativePath(selectedClient, project.name);
-    const availability = cloudAvailabilityForRelativePath(cloudJobs, relativePath);
-    return { ...project, ...availability };
-  });
-}
-
-function parseCloudClients(value: unknown): CloudClient[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (!isRecord(item) || typeof item.slug !== "string" || typeof item.display_name !== "string") return [];
-    return [
-      {
-        slug: item.slug,
-        display_name: item.display_name,
-        status: typeof item.status === "string" ? item.status : undefined,
-        projects: Array.isArray(item.projects) ? item.projects.filter((project): project is string => typeof project === "string") : [],
-        tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === "string") : [],
-      },
-    ];
-  });
-}
-
-function parseCloudProjects(value: unknown): CloudProject[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (
-      !isRecord(item) ||
-      typeof item.slug !== "string" ||
-      typeof item.display_name !== "string" ||
-      typeof item.client !== "string"
-    ) {
-      return [];
-    }
-
-    return [
-      {
-        slug: item.slug,
-        display_name: item.display_name,
-        client: item.client,
-        status: typeof item.status === "string" ? item.status : undefined,
-      },
-    ];
-  });
-}
-
-function parseCloudJobs(value: unknown): CloudJob[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (!isRecord(item) || typeof item.job_id !== "string" || typeof item.source_filename !== "string" || typeof item.status !== "string") {
-      return [];
-    }
-
-    return [
-      {
-        job_id: item.job_id,
-        source_filename: item.source_filename,
-        source_size_bytes: typeof item.source_size_bytes === "number" ? item.source_size_bytes : undefined,
-        source_duration_ms: typeof item.source_duration_ms === "number" || item.source_duration_ms === null ? item.source_duration_ms : undefined,
-        relative_path: typeof item.relative_path === "string" ? item.relative_path : undefined,
-        status: item.status,
-        accepted_at: typeof item.accepted_at === "string" ? item.accepted_at : undefined,
-        completed_at: typeof item.completed_at === "string" || item.completed_at === null ? item.completed_at : undefined,
-        has_audio: typeof item.has_audio === "boolean" ? item.has_audio : undefined,
-        audio_url: typeof item.audio_url === "string" || item.audio_url === null ? item.audio_url : undefined,
-        has_transcription: typeof item.has_transcription === "boolean" ? item.has_transcription : undefined,
-        has_analysis: typeof item.has_analysis === "boolean" ? item.has_analysis : undefined,
-      },
-    ];
-  });
-}
-
-function cloudJobToAudioRow(job: CloudJob): AudioRow {
-  const { client, project } = relativePathToLabels(job.relative_path);
-  const title = job.source_filename.replace(/\.(opus|mp3)$/i, "") || job.job_id;
-  const startedAt = job.accepted_at ?? job.completed_at ?? new Date(0).toISOString();
-  const hasCloudContent = Boolean(job.has_transcription || job.has_analysis);
-
-  return {
-    recording: {
-      id: job.job_id,
-      status: job.status,
-      started_at: startedAt,
-      completed_at: job.completed_at,
-      duration_ms: job.source_duration_ms ?? 0,
-      folder_path: "",
-      final_audio_path: null,
-      audio_url: job.audio_url ?? null,
-      source_duration_ms: job.source_duration_ms ?? null,
-      segments: 0,
-      size_bytes: job.source_size_bytes ?? 0,
-    },
-    metadata: {
-      client,
-      project,
-      title,
-      notes: "",
-      draftState: hasCloudContent ? "classified" : "draft_saved",
-    },
-    displayName: title,
-    client,
-    project,
-    status: hasCloudContent ? "classified" : "draft_saved",
-    source: "cloud",
-    cloudJobId: job.job_id,
-  };
-}
-
-function relativePathToLabels(relativePath?: string): { client: string; project: string } {
-  const parts = (relativePath ?? "drafts")
-    .replace(/\\/g, "/")
-    .split("/")
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  const client = parts[0] && !isDraftClient(parts[0]) ? parts[0] : unclassifiedClient;
-  const project = parts[1] || allProjects;
-  return { client, project };
-}
-
-function audioDurationMs(row: AudioRow, durationById: Record<string, number>): number {
-  return durationById[row.recording.id] || row.recording.source_duration_ms || row.recording.duration_ms || 0;
-}
-
-function findCloudJobForRow(row: AudioRow, rows: AudioRow[], jobs: CloudJob[], linkedJobId?: string): CloudJob | undefined {
-  const candidates = audioJobCandidateNames(row);
-  const rowRelativePath = transcriptionRelativePath(row.client, row.project);
-
-  if (linkedJobId) {
-    const linkedJob = jobs.find((job) => job.job_id === linkedJobId);
-    if (linkedJob) return linkedJob;
-  }
-
-  const byStrictMatch = jobs.find((job) => cloudJobMatchesRow(job, candidates, rowRelativePath));
-  if (byStrictMatch) return byStrictMatch;
-
-  const rowsInSamePath = rows.filter((candidate) => transcriptionRelativePath(candidate.client, candidate.project) === rowRelativePath);
-  if (rowsInSamePath.length !== 1) return undefined;
-
-  const artifactJobsInSamePath = jobs.filter(
-    (job) =>
-      normalizeRelativePathForMatch(job.relative_path ?? "") === normalizeRelativePathForMatch(rowRelativePath) &&
-      (job.has_transcription || job.has_analysis),
-  );
-
-  if (artifactJobsInSamePath.length === 1) return artifactJobsInSamePath[0];
-
-  return artifactJobsInSamePath.find((job) => isGenericMixedAudioName(job.source_filename));
-}
-
-function isDraftClient(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  return normalized === "drafts" || normalized === "sin clasificar";
-}
-
-function loadStoredTheme(): AppTheme {
-  const stored = localStorage.getItem(themeStorageKey);
-  return stored === "light" || stored === "dark" ? stored : "dark";
-}
-
-function audioJobCandidateNames(row: AudioRow): Set<string> {
-  const path = recordingAudioPath(row.recording);
-  const pathFileName = path.split(/[\\/]/).pop() ?? "";
-  const displayName = row.displayName.trim();
-  const names = [displayName, `${displayName}.opus`, `${displayName}.mp3`];
-  if (!isGenericMixedAudioName(pathFileName)) {
-    names.push(pathFileName);
-  }
-  return new Set(names.map(normalizeJobFileName).filter(Boolean));
-}
-
-function normalizeJobFileName(value: string): string {
-  return value.trim().toLowerCase().replace(/\.(opus|mp3)$/i, "");
-}
-
-function isGenericMixedAudioName(value: string): boolean {
-  const normalized = normalizeJobFileName(value);
-  return normalized === "mixed" || normalized === "audio";
-}
-
-function cloudJobMatchesRow(job: CloudJob, candidates: Set<string>, rowRelativePath: string): boolean {
-  if (!candidates.has(normalizeJobFileName(job.source_filename))) return false;
-  if (!job.relative_path) return true;
-  return normalizeRelativePathForMatch(job.relative_path) === normalizeRelativePathForMatch(rowRelativePath);
-}
-
-function cloudAvailabilityForRelativePath(jobs: CloudJob[], relativePath: string) {
-  const normalizedPath = normalizeRelativePathForMatch(relativePath);
-  const matches = jobs.filter((job) => normalizeRelativePathForMatch(job.relative_path ?? "") === normalizedPath);
-  return {
-    hasTranscription: matches.some((job) => Boolean(job.has_transcription)),
-    hasAnalysis: matches.some((job) => Boolean(job.has_analysis)),
-  };
-}
-
-function normalizeRelativePathForMatch(value: string): string {
-  return value
-    .trim()
-    .replace(/\\/g, "/")
-    .replace(/^\/+|\/+$/g, "")
-    .split("/")
-    .map(sanitizeRelativePathPart)
-    .filter(Boolean)
-    .join("/");
-}
-
-function parseMarkdownBlocks(content?: string | null): MarkdownBlockData[] {
-  if (!content) return [];
-  const normalized = content.replace(/^---[\s\S]*?---\s*/m, "");
-  const withSpeakerBreaks = normalized.replace(/(\[Speaker\s+\d+\])/gi, "\n$1");
-  const blocks: MarkdownBlockData[] = [];
-  let listItems: string[] = [];
-  let listOrdered = false;
-  let paragraphLines: string[] = [];
-
-  function flushParagraph() {
-    if (paragraphLines.length === 0) return;
-    blocks.push({ type: "paragraph", text: paragraphLines.join(" ") });
-    paragraphLines = [];
-  }
-
-  function flushList() {
-    if (listItems.length > 0) {
-      blocks.push({ type: "list", ordered: listOrdered, items: listItems });
-      listItems = [];
-    }
-  }
-
-  const lines = withSpeakerBreaks.split(/\r?\n/);
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index].trim();
-    if (!line) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-
-    const fence = line.match(/^```(\w+)?\s*$/);
-    if (fence) {
-      flushParagraph();
-      flushList();
-      const codeLines: string[] = [];
-      index += 1;
-      while (index < lines.length && !lines[index].trim().startsWith("```")) {
-        codeLines.push(lines[index]);
-        index += 1;
-      }
-      blocks.push({ type: "code", text: codeLines.join("\n"), language: fence[1] });
-      continue;
-    }
-
-    if (isMarkdownTableHeader(line, lines[index + 1]?.trim() ?? "")) {
-      flushParagraph();
-      flushList();
-      const headers = splitMarkdownTableRow(line);
-      const rows: string[][] = [];
-      index += 2;
-      while (index < lines.length && isMarkdownTableRow(lines[index].trim())) {
-        rows.push(splitMarkdownTableRow(lines[index].trim()));
-        index += 1;
-      }
-      index -= 1;
-      blocks.push({ type: "table", headers, rows });
-      continue;
-    }
-
-    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
-      flushParagraph();
-      flushList();
-      blocks.push({ type: "divider" });
-      continue;
-    }
-
-    const heading = line.match(/^(#{1,6})\s+(.+)$/);
-    if (heading) {
-      flushParagraph();
-      flushList();
-      blocks.push({ type: "heading", level: heading[1].length, text: stripMarkdownContainers(heading[2]) });
-      continue;
-    }
-
-    const unorderedListItem = line.match(/^[-*+]\s+(.+)$/);
-    const orderedListItem = line.match(/^\d+[.)]\s+(.+)$/);
-    if (unorderedListItem || orderedListItem) {
-      flushParagraph();
-      const ordered = Boolean(orderedListItem);
-      if (listItems.length > 0 && listOrdered !== ordered) flushList();
-      listOrdered = ordered;
-      listItems.push(stripMarkdownContainers((orderedListItem ?? unorderedListItem)?.[1] ?? ""));
-      continue;
-    }
-
-    if (line.startsWith(">")) {
-      flushParagraph();
-      flushList();
-      blocks.push({ type: "quote", text: stripMarkdownContainers(line.replace(/^>\s*/, "")) });
-      continue;
-    }
-
-    if (/^\[Speaker\s+\d+\]/i.test(line)) {
-      flushParagraph();
-      flushList();
-      paragraphLines.push(stripMarkdownContainers(line));
-      continue;
-    }
-
-    flushList();
-    paragraphLines.push(stripMarkdownContainers(line));
-  }
-
-  flushParagraph();
-  flushList();
-  return blocks.slice(0, 120);
-}
-
-function isMarkdownTableHeader(line: string, nextLine: string): boolean {
-  return isMarkdownTableRow(line) && /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(nextLine);
-}
-
-function isMarkdownTableRow(line: string): boolean {
-  return line.includes("|") && line.split("|").filter((cell) => cell.trim()).length >= 2;
-}
-
-function splitMarkdownTableRow(line: string): string[] {
-  return line
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => stripMarkdownContainers(cell.trim()));
-}
-
-function stripMarkdownContainers(value: string): string {
-  return value
-    .replace(/^\s{0,3}#{1,6}\s+/, "")
-    .trim();
-}
-
-function markdownBlocksToPlainText(blocks: MarkdownBlockData[], fallback: string): string {
-  if (blocks.length === 0) return markdownToPlainText(fallback);
-
-  return blocks
-    .flatMap((block) => {
-      if (block.type === "heading" || block.type === "paragraph" || block.type === "quote") return [block.text];
-      if (block.type === "meta") return [`${block.label}: ${block.value}`];
-      if (block.type === "list") return block.items;
-      if (block.type === "code") return [block.text];
-      if (block.type === "table") return [[block.headers.join(" | "), ...block.rows.map((row) => row.join(" | "))].join("\n")];
-      return [];
-    })
-    .map((line) => markdownToPlainText(line).trim())
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-function markdownToPlainText(value: string): string {
-  return value
-    .replace(/^---[\s\S]*?---\s*/m, "")
-    .replace(/```[\w-]*\n([\s\S]*?)```/g, "$1")
-    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
-    .replace(/^\s{0,3}>\s?/gm, "")
-    .replace(/^\s*[-*+]\s+/gm, "")
-    .replace(/^\s*\d+[.)]\s+/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/_([^_]+)_/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-async function copyTextToClipboard(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-
-  try {
-    const copied = document.execCommand("copy");
-    if (!copied) throw new Error("copy command failed");
-  } finally {
-    document.body.removeChild(textarea);
-  }
-}
-
-function parseTranscriptionAccepted(body: string): { job_id?: string; status?: string } | null {
-  try {
-    const parsed = JSON.parse(body) as unknown;
-    if (!isRecord(parsed)) return null;
-    return {
-      job_id: typeof parsed.job_id === "string" ? parsed.job_id : undefined,
-      status: typeof parsed.status === "string" ? parsed.status : undefined,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function inferMetadata(recording: RecordingSummary): AudioMetadata {
-  const pathParts = recording.final_audio_path?.split(/[\\/]/).filter(Boolean) ?? [];
-  const assistantIndex = pathParts.findIndex((part) => part.toLowerCase() === "meetings assistant");
-  const client = assistantIndex >= 0 ? pathParts[assistantIndex + 1] : "";
-  const project = assistantIndex >= 0 ? pathParts[assistantIndex + 2] : "";
-  const isDraft = client?.toLowerCase() === "drafts";
-  const normalizedClient = isDraft ? unclassifiedClient : client || unclassifiedClient;
-
-  return {
-    client: normalizedClient,
-    project: isDraft ? "Drafts" : project || allProjects,
-    title: displayRecordingName(recording),
-    notes: "",
-    draftState: isDraft ? "draft_saved" : resolveAudioStatus("unclassified", normalizedClient),
-  };
-}
-
-function resolveAudioStatus(state: DraftState, client: string): DraftState {
-  const normalizedClient = client.trim().toLowerCase();
-  if (normalizedClient && !isDraftClient(normalizedClient)) {
-    return state === "archived" ? "archived" : "classified";
-  }
-
-  return state;
-}
-
-function buildClientGroups(rows: AudioRow[]) {
-  const counts = new Map<string, number>();
-  counts.set(unclassifiedClient, 0);
-
-  rows.forEach((row) => {
-    counts.set(row.client, (counts.get(row.client) ?? 0) + 1);
-  });
-
-  return Array.from(counts.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((left, right) => {
-      if (left.name === unclassifiedClient) return -1;
-      if (right.name === unclassifiedClient) return 1;
-      return left.name.localeCompare(right.name);
-    });
-}
-
-function buildProjectsForClient(rows: AudioRow[], selectedClient: string) {
-  const visibleRows = rows.filter((row) => row.client === selectedClient);
-  const counts = new Map<string, number>();
-  counts.set(allProjects, visibleRows.length);
-
-  visibleRows.forEach((row) => {
-    counts.set(row.project, (counts.get(row.project) ?? 0) + 1);
-  });
-
-  return Array.from(counts.entries()).map(([name, count]) => ({ name, count }));
-}
-
-function toPlayableAudioSrc(path: string): string {
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!isTauriRuntime) return path;
-  return convertFileSrc(path);
-}
-
-function recordingAudioPath(recording: RecordingSummary): string {
-  if (recording.audio_url) return recording.audio_url;
-  if (recording.final_audio_path) return recording.final_audio_path;
-  if (!recording.folder_path) return "";
-  return `${recording.folder_path.replace(/[\\/]$/, "")}\\final\\mixed.opus`;
-}
-
-function audioFileName(path: string, displayName: string): string {
-  const rawFileName = path.split(/[\\/]/).pop();
-  const rawExtension = rawFileName?.match(/\.(mp3|opus)$/i)?.[0] ?? ".opus";
-
-  const safeName = displayName
-    .trim()
-    .replace(/\.(mp3|opus)$/i, "")
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
-    .trim();
-
-  return `${safeName || rawFileName?.replace(/\.(mp3|opus)$/i, "") || "audio"}${rawExtension}`;
-}
-
-function transcriptionRelativePath(client: string, project: string): string {
-  const cleanClient = sanitizeRelativePathPart(client);
-  const cleanProject = sanitizeRelativePathPart(project);
-  if (cleanClient && !isDraftClient(cleanClient)) {
-    return cleanProject && cleanProject !== allProjects.toLowerCase() ? `${cleanClient}/${cleanProject}` : cleanClient;
-  }
-  return "drafts";
-}
-
-function sanitizeRelativePathPart(value: string): string {
-  return value
-    .trim()
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
-    .replace(/[ .]+$/g, "")
-    .toLowerCase();
-}
-
-async function requestBrowserTranscription({
-  endpoint,
-  apiKey,
-  audioSrc,
-  audioPath,
-  displayName,
-  client,
-  project,
-  durationMs,
-}: {
-  endpoint: string;
-  apiKey: string;
-  audioSrc: string;
-  audioPath: string;
-  displayName: string;
-  client: string;
-  project: string;
-  durationMs?: number;
-}): Promise<{ status: number; body: string }> {
-  const audioResponse = await fetch(audioSrc);
-  if (!audioResponse.ok) {
-    throw new Error("No se pudo leer el archivo de audio local.");
-  }
-
-  const blob = await audioResponse.blob();
-  const fileName = audioFileName(audioPath, displayName);
-  const form = new FormData();
-  form.append("file", blob, fileName);
-  form.append("relative_path", transcriptionRelativePath(client, project));
-  if (durationMs && durationMs > 0) {
-    form.append("duration_ms", String(Math.round(durationMs)));
-  }
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "X-API-Key": apiKey,
-    },
-    body: form,
-  });
-
-  const body = await response.text();
-
-  if (response.status !== 202) {
-    throw new Error(responseErrorText(response.status, body));
-  }
-
-  return { status: response.status, body };
-}
-
-async function responseErrorMessage(response: Response): Promise<string> {
-  const fallback = `El servicio respondio ${response.status}.`;
-  try {
-    const payload = await response.json();
-    if (typeof payload?.detail === "string") return payload.detail;
-    if (typeof payload?.message === "string") return payload.message;
-    return fallback;
-  } catch {
-    const text = await response.text().catch(() => "");
-    return text.trim() || fallback;
-  }
-}
-
-function responseErrorText(status: number, body: string): string {
-  const fallback = `El servicio respondio ${status}.`;
-  if (!body.trim()) return fallback;
-  try {
-    const payload = JSON.parse(body) as unknown;
-    if (isRecord(payload) && typeof payload.detail === "string") return payload.detail;
-    if (isRecord(payload) && typeof payload.message === "string") return payload.message;
-    return fallback;
-  } catch {
-    return body.trim() || fallback;
-  }
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("es-CL", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function createMeterBars(level: number): number[] {
-  if (level < 0.01) {
-    return Array.from({ length: bars.length }, () => 0.04);
-  }
-
-  const energy = Math.min(1, level * 2.2);
-  return bars.map((bar, index) => {
-    const movement = 0.82 + Math.sin(Date.now() / 260 + index * 0.72) * 0.12;
-    return Math.min(1, Math.max(0.08, bar * energy * movement));
-  });
-}
-
-function displayRecordingName(recording: { final_audio_path?: string | null; started_at: string; id: string }): string {
-  const fileName = recording.final_audio_path?.split(/[\\/]/).pop()?.replace(/\.opus$/i, "");
-  if (fileName) return fileName;
-
-  const startedAt = new Date(recording.started_at);
-  if (!Number.isNaN(startedAt.getTime())) {
-    return defaultRecordingFileName(startedAt);
-  }
-
-  return recording.id.replace("rec_", "");
-}
-
-function formatWidgetDuration(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  return `${hours.toString().padStart(2, "0")}h:${minutes.toString().padStart(2, "0")}m:${seconds
-    .toString()
-    .padStart(2, "0")}s`;
-}
-
-function statusTitle(status: string): string {
-  if (status === "paused") return "Pausado";
-  if (status === "stopping") return "Finalizando";
-  if (status === "completed") return "Listo";
-  if (status === "error") return "Error";
-  if (status === "recording") return "Grabando";
-  if (status === "starting") return "Preparando";
-  return "Meetings Assistant";
-}
-
-function statusSubtitle(status: string): string {
-  if (status === "paused") return "Sesión en espera";
-  if (status === "completed") return "Audio local disponible";
-  if (status === "recording") return "Captura local";
-  if (status === "starting") return "Preparando audio";
-  if (status === "stopping") return "Cerrando archivos";
-  return "Grabador de audio";
 }
 
 function useLiveDuration(
