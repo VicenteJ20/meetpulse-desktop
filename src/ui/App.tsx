@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent, ReactNode } from "react";
+import type { PointerEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   ChevronRight,
@@ -67,6 +67,13 @@ import {
 import { useAuthStore } from "../store/authStore";
 import { useRecorderStore } from "../store/recorderStore";
 import { LoginScreen } from "./Login";
+import { StatusBadge } from "./components/library/StatusBadge";
+import { MarkdownBlock, type MarkdownBlockData } from "./components/markdown/MarkdownBlock";
+import { ControlButton } from "./components/recorder/ControlButton";
+import { DeviceSelect } from "./components/recorder/DeviceSelect";
+import { MiniButton } from "./components/recorder/MiniButton";
+import { SignalIcon } from "./components/recorder/SignalIcon";
+import { TrackWave } from "./components/recorder/TrackWave";
 
 const bars = [
   0.52, 0.7, 0.38, 0.78, 0.66, 0.46, 0.3, 0.58, 0.24, 0.51, 0.72, 0.37, 0.44, 0.64, 0.29, 0.53, 0.4, 0.62,
@@ -1629,136 +1636,6 @@ export function App() {
   );
 }
 
-function StatusBadge({ state }: { state: DraftState }) {
-  const label = {
-    unclassified: "Pendiente",
-    classified: "Clasificado",
-    draft_ready: "Draft ready",
-    draft_saved: "En drafts",
-    archived: "Archivo",
-  }[state];
-
-  return <span className={clsx("status-badge", `is-${state}`)}>{label}</span>;
-}
-
-type MarkdownBlockData =
-  | { type: "heading"; level: number; text: string }
-  | { type: "paragraph"; text: string }
-  | { type: "list"; ordered: boolean; items: string[] }
-  | { type: "quote"; text: string }
-  | { type: "meta"; label: string; value: string }
-  | { type: "table"; headers: string[]; rows: string[][] }
-  | { type: "code"; text: string; language?: string }
-  | { type: "divider" };
-
-type MarkdownInlinePart =
-  | { type: "text"; value: string }
-  | { type: "strong"; value: string }
-  | { type: "em"; value: string }
-  | { type: "code"; value: string };
-
-function MarkdownBlock({ block, tab }: { block: MarkdownBlockData; tab?: string }) {
-  const isTranscript = tab === "transcription";
-
-  if (block.type === "heading") {
-    const Tag = `h${Math.min(6, Math.max(1, block.level))}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
-    const className = clsx(
-      "markdown-heading",
-      block.level === 1 && "is-h1",
-      block.level === 2 && "is-h2",
-      block.level === 3 && "is-h3",
-      block.level >= 4 && "is-minor"
-    );
-    return <Tag className={className}>{renderMarkdownInline(block.text)}</Tag>;
-  }
-
-  if (block.type === "code") {
-    return (
-      <pre className="markdown-code-block">
-        <code>{block.text}</code>
-      </pre>
-    );
-  }
-
-  if (block.type === "table") {
-    return (
-      <div className="markdown-table-wrap">
-        <table className="markdown-table">
-          <thead>
-            <tr>
-              {block.headers.map((header, index) => (
-                <th key={`${header}-${index}`}>{renderMarkdownInline(header)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {block.rows.map((row, rowIndex) => (
-              <tr key={`row-${rowIndex}`}>
-                {block.headers.map((_, cellIndex) => (
-                  <td key={`cell-${rowIndex}-${cellIndex}`}>{renderMarkdownInline(row[cellIndex] ?? "")}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  if (block.type === "list") {
-    const ListTag = block.ordered ? "ol" : "ul";
-    return (
-      <ListTag className={clsx("markdown-list", block.ordered && "is-ordered")}>
-        {block.items.map((item, index) => (
-          <li key={`${item}-${index}`}>{renderMarkdownInline(item)}</li>
-        ))}
-      </ListTag>
-    );
-  }
-
-  if (block.type === "quote") {
-    return <blockquote className="markdown-quote">{renderMarkdownInline(block.text)}</blockquote>;
-  }
-
-  if (block.type === "meta") {
-    return (
-      <p className="markdown-meta">
-        <span>{renderMarkdownInline(block.label)}</span>
-        <strong>{renderMarkdownInline(block.value)}</strong>
-      </p>
-    );
-  }
-
-  if (block.type === "divider") {
-    return <hr className="markdown-divider" />;
-  }
-
-  // Paragraph — in transcript mode, detect [Speaker N] pattern
-  if (isTranscript) {
-    const speakerMatch = block.text.match(/^\[([^\]]+)\]\s*(.*)$/);
-    if (speakerMatch) {
-      return (
-        <p className="transcript-line">
-          <span className="transcript-speaker">{speakerMatch[1]}</span>
-          <span className="transcript-text">{renderMarkdownInline(speakerMatch[2])}</span>
-        </p>
-      );
-    }
-    return <p className="transcript-line transcript-plain">{renderMarkdownInline(block.text)}</p>;
-  }
-
-  return <p className="markdown-paragraph">{renderMarkdownInline(block.text)}</p>;
-}
-
-function renderMarkdownInline(text: string): ReactNode {
-  return parseMarkdownInline(text).map((part, index) => {
-    if (part.type === "strong") return <strong key={`${part.value}-${index}`}>{part.value}</strong>;
-    if (part.type === "em") return <em key={`${part.value}-${index}`}>{part.value}</em>;
-    if (part.type === "code") return <code key={`${part.value}-${index}`}>{part.value}</code>;
-    return <span key={`${part.value}-${index}`}>{part.value}</span>;
-  });
-}
-
 function loadAudioMetadata(): Record<string, AudioMetadata> {
   try {
     const raw = localStorage.getItem(audioMetadataStorageKey);
@@ -2195,36 +2072,6 @@ function stripMarkdownContainers(value: string): string {
     .trim();
 }
 
-function parseMarkdownInline(value: string): MarkdownInlinePart[] {
-  const parts: MarkdownInlinePart[] = [];
-  // Order matters: bold (**) before italic (*)
-  const pattern = /(\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|`([^`]+)`)/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(value)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: "text", value: value.slice(lastIndex, match.index) });
-    }
-
-    if (match[6]) {
-      parts.push({ type: "code", value: match[6] });
-    } else if (match[2] ?? match[3]) {
-      parts.push({ type: "strong", value: match[2] ?? match[3] ?? "" });
-    } else if (match[4] ?? match[5]) {
-      parts.push({ type: "em", value: match[4] ?? match[5] ?? "" });
-    }
-
-    lastIndex = pattern.lastIndex;
-  }
-
-  if (lastIndex < value.length) {
-    parts.push({ type: "text", value: value.slice(lastIndex) });
-  }
-
-  return parts.length > 0 ? parts : [{ type: "text", value }];
-}
-
 function markdownBlocksToPlainText(blocks: MarkdownBlockData[], fallback: string): string {
   if (blocks.length === 0) return markdownToPlainText(fallback);
 
@@ -2483,138 +2330,6 @@ function formatDateTime(value: string): string {
   }).format(date);
 }
 
-function DeviceSelect({
-  label,
-  icon,
-  devices,
-  value,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  icon: ReactNode;
-  devices: AudioDevice[];
-  value: string;
-  disabled: boolean;
-  onChange: (deviceId: string) => void;
-}) {
-  return (
-    <label className="device-select">
-      <span>
-        {icon}
-        {label}
-      </span>
-      <select
-        value={value}
-        disabled={disabled || devices.length === 0}
-        onChange={(event) => onChange(event.currentTarget.value)}
-      >
-        {devices.length === 0 ? (
-          <option value="">No disponible</option>
-        ) : (
-          devices.map((device) => (
-            <option key={device.id} value={device.id}>
-              {device.name}{device.is_default ? " (default)" : ""}
-            </option>
-          ))
-        )}
-      </select>
-    </label>
-  );
-}
-
-function SignalIcon({
-  icon,
-  active,
-  color,
-  label,
-}: {
-  icon: ReactNode;
-  active: boolean;
-  color: "mic" | "system";
-  label: string;
-}) {
-  return (
-    <span className={clsx("signal-icon", color, active && "is-active")} title={label} aria-label={label}>
-      {icon}
-    </span>
-  );
-}
-
-function MiniButton({
-  label,
-  icon,
-  disabled,
-  active,
-  onClick,
-}: {
-  label: string;
-  icon: ReactNode;
-  disabled?: boolean;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={clsx("mini-button", active && "is-active")}
-      disabled={disabled}
-      onPointerDown={(event) => {
-        event.stopPropagation();
-      }}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
-      title={label}
-      aria-label={label}
-    >
-      {icon}
-    </button>
-  );
-}
-
-function TrackWave({
-  label,
-  icon,
-  level,
-  bars,
-  active,
-  color,
-}: {
-  label: string;
-  icon: ReactNode;
-  level: number;
-  bars: number[];
-  active: boolean;
-  color: "mic" | "system";
-}) {
-  const hasSignal = active && level > 0.01;
-
-  return (
-    <div
-      className={clsx("track-wave", color, hasSignal && "has-signal")}
-      title={label}
-      aria-label={label}
-    >
-      <div className="track-head">
-        {icon}
-      </div>
-      <div className="waveform" aria-hidden="true">
-        {bars.map((height, index) => (
-          <span
-            key={`${color}-${index}`}
-            className="wave-bar"
-            style={{
-              height: hasSignal ? `${Math.max(4, Math.min(100, height * 100))}%` : "3px",
-            } as CSSProperties}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function createMeterBars(level: number): number[] {
   if (level < 0.01) {
     return Array.from({ length: bars.length }, () => 0.04);
@@ -2637,36 +2352,6 @@ function displayRecordingName(recording: { final_audio_path?: string | null; sta
   }
 
   return recording.id.replace("rec_", "");
-}
-
-function ControlButton({
-  label,
-  icon,
-  className,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  icon: ReactNode;
-  className?: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <div className="control-stack">
-      <span className="control-label">{label}</span>
-      <button
-        type="button"
-        className={clsx("control-button", className)}
-        disabled={disabled}
-        onClick={onClick}
-        title={label}
-        aria-label={label}
-      >
-        {icon}
-      </button>
-    </div>
-  );
 }
 
 function formatWidgetDuration(ms: number): string {
