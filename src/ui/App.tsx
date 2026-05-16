@@ -1556,6 +1556,8 @@ type MarkdownBlockData =
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "quote"; text: string }
   | { type: "meta"; label: string; value: string }
+  | { type: "table"; headers: string[]; rows: string[][] }
+  | { type: "code"; text: string; language?: string }
   | { type: "divider" };
 
 type MarkdownInlinePart =
@@ -1568,7 +1570,7 @@ function MarkdownBlock({ block, tab }: { block: MarkdownBlockData; tab?: string 
   const isTranscript = tab === "transcription";
 
   if (block.type === "heading") {
-    const Tag = block.level <= 2 ? "h2" : block.level <= 4 ? "h3" : "h4";
+    const Tag = `h${Math.min(6, Math.max(1, block.level))}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
     const className = clsx(
       "markdown-heading",
       block.level === 1 && "is-h1",
@@ -1577,6 +1579,39 @@ function MarkdownBlock({ block, tab }: { block: MarkdownBlockData; tab?: string 
       block.level >= 4 && "is-minor"
     );
     return <Tag className={className}>{renderMarkdownInline(block.text)}</Tag>;
+  }
+
+  if (block.type === "code") {
+    return (
+      <pre className="markdown-code-block">
+        <code>{block.text}</code>
+      </pre>
+    );
+  }
+
+  if (block.type === "table") {
+    return (
+      <div className="markdown-table-wrap">
+        <table className="markdown-table">
+          <thead>
+            <tr>
+              {block.headers.map((header, index) => (
+                <th key={`${header}-${index}`}>{renderMarkdownInline(header)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {block.rows.map((row, rowIndex) => (
+              <tr key={`row-${rowIndex}`}>
+                {block.headers.map((_, cellIndex) => (
+                  <td key={`cell-${rowIndex}-${cellIndex}`}>{renderMarkdownInline(row[cellIndex] ?? "")}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   if (block.type === "list") {
@@ -1959,19 +1994,50 @@ function parseMarkdownBlocks(content?: string | null): MarkdownBlockData[] {
     }
   }
 
-  withSpeakerBreaks.split(/\r?\n/).forEach((rawLine) => {
-    const line = rawLine.trim();
+  const lines = withSpeakerBreaks.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
     if (!line) {
       flushParagraph();
       flushList();
-      return;
+      continue;
+    }
+
+    const fence = line.match(/^```(\w+)?\s*$/);
+    if (fence) {
+      flushParagraph();
+      flushList();
+      const codeLines: string[] = [];
+      index += 1;
+      while (index < lines.length && !lines[index].trim().startsWith("```")) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      blocks.push({ type: "code", text: codeLines.join("\n"), language: fence[1] });
+      continue;
+    }
+
+    if (isMarkdownTableHeader(line, lines[index + 1]?.trim() ?? "")) {
+      flushParagraph();
+      flushList();
+      const headers = splitMarkdownTableRow(line);
+      const rows: string[][] = [];
+      index += 2;
+      while (index < lines.length && isMarkdownTableRow(lines[index].trim())) {
+        rows.push(splitMarkdownTableRow(lines[index].trim()));
+        index += 1;
+      }
+      index -= 1;
+      blocks.push({ type: "table", headers, rows });
+      continue;
     }
 
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
       flushParagraph();
       flushList();
       blocks.push({ type: "divider" });
-      return;
+      continue;
     }
 
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
@@ -1979,10 +2045,10 @@ function parseMarkdownBlocks(content?: string | null): MarkdownBlockData[] {
       flushParagraph();
       flushList();
       blocks.push({ type: "heading", level: heading[1].length, text: stripMarkdownContainers(heading[2]) });
-      return;
+      continue;
     }
 
-    const unorderedListItem = line.match(/^[-*]\s+(.+)$/);
+    const unorderedListItem = line.match(/^[-*+]\s+(.+)$/);
     const orderedListItem = line.match(/^\d+[.)]\s+(.+)$/);
     if (unorderedListItem || orderedListItem) {
       flushParagraph();
@@ -1990,38 +2056,46 @@ function parseMarkdownBlocks(content?: string | null): MarkdownBlockData[] {
       if (listItems.length > 0 && listOrdered !== ordered) flushList();
       listOrdered = ordered;
       listItems.push(stripMarkdownContainers((orderedListItem ?? unorderedListItem)?.[1] ?? ""));
-      return;
+      continue;
     }
 
     if (line.startsWith(">")) {
       flushParagraph();
       flushList();
       blocks.push({ type: "quote", text: stripMarkdownContainers(line.replace(/^>\s*/, "")) });
-      return;
+      continue;
     }
 
     if (/^\[Speaker\s+\d+\]/i.test(line)) {
       flushParagraph();
       flushList();
       paragraphLines.push(stripMarkdownContainers(line));
-      return;
-    }
-
-    const meta = line.match(/^([^:]{2,44}):\s+(.+)$/);
-    if (meta && line.length < 140) {
-      flushParagraph();
-      flushList();
-      blocks.push({ type: "meta", label: stripMarkdownContainers(meta[1]), value: stripMarkdownContainers(meta[2]) });
-      return;
+      continue;
     }
 
     flushList();
     paragraphLines.push(stripMarkdownContainers(line));
-  });
+  }
 
   flushParagraph();
   flushList();
   return blocks.slice(0, 120);
+}
+
+function isMarkdownTableHeader(line: string, nextLine: string): boolean {
+  return isMarkdownTableRow(line) && /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(nextLine);
+}
+
+function isMarkdownTableRow(line: string): boolean {
+  return line.includes("|") && line.split("|").filter((cell) => cell.trim()).length >= 2;
+}
+
+function splitMarkdownTableRow(line: string): string[] {
+  return line
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => stripMarkdownContainers(cell.trim()));
 }
 
 function stripMarkdownContainers(value: string): string {
