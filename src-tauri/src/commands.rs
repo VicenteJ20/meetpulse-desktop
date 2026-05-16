@@ -71,10 +71,18 @@ pub async fn cleanup_local_recording(
     state: State<'_, AppState>,
     recording_id: String,
 ) -> Result<(), String> {
-    let recording_dir = state.storage.delete_recording_local(&recording_id).map_err(to_message)?;
+    let (recording_dir, final_audio_path) = state.storage.delete_recording_local(&recording_id).map_err(to_message)?;
     let recordings_root = state.storage.recordings_root();
     if recording_dir.starts_with(&recordings_root) && recording_dir.exists() {
         fs::remove_dir_all(&recording_dir).map_err(|error| error.to_string())?;
+    }
+    if let Some(final_audio_path) = final_audio_path {
+        if final_audio_path.exists() {
+            let _ = fs::remove_file(&final_audio_path);
+        }
+        if let Ok(music_root) = music_library_root() {
+            prune_empty_library_dirs(final_audio_path.parent(), &music_root);
+        }
     }
     let _ = app.emit("recorder://recordings-changed", ());
     Ok(())
@@ -546,3 +554,21 @@ fn copy_atomic(source: &Path, destination: &Path) -> anyhow::Result<()> {
     result
 }
 
+fn prune_empty_library_dirs(start: Option<&Path>, stop_at: &Path) {
+    let Some(mut current) = start.map(Path::to_path_buf) else {
+        return;
+    };
+
+    while current.starts_with(stop_at) && current != stop_at {
+        match fs::remove_dir(&current) {
+            Ok(()) => {
+                if let Some(parent) = current.parent() {
+                    current = parent.to_path_buf();
+                } else {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+}

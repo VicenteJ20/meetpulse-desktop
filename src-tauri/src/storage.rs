@@ -244,12 +244,21 @@ impl Storage {
         self.paths.recordings.clone()
     }
 
-    pub fn delete_recording_local(&self, recording_id: &str) -> anyhow::Result<PathBuf> {
+    pub fn delete_recording_local(&self, recording_id: &str) -> anyhow::Result<(PathBuf, Option<PathBuf>)> {
         let recording_dir = self.recording_folder(recording_id);
         let connection = self.connection.lock().expect("SQLite mutex poisoned");
+        let final_audio_path = connection
+            .query_row(
+                "SELECT final_audio_path FROM recordings WHERE id = ?1",
+                params![recording_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten()
+            .map(PathBuf::from);
         connection.execute("DELETE FROM segments WHERE recording_id = ?1", params![recording_id])?;
         connection.execute("DELETE FROM recordings WHERE id = ?1", params![recording_id])?;
-        Ok(recording_dir)
+        Ok((recording_dir, final_audio_path))
     }
 
     pub fn recording_open_folder(&self, recording_id: &str) -> anyhow::Result<PathBuf> {
