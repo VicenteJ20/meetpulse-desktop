@@ -1,8 +1,7 @@
 ﻿import type { AudioRow } from '../../lib/audioTypes';
 import { clsx } from 'clsx';
-import { ChevronRight, Clock3, Eye, FileAudio, FileText, FolderOpen, Loader2, Save, Sparkles, Tag, X } from 'lucide-react';
+import { Archive, ChevronRight, Clock3, Eye, FileAudio, FileText, FolderOpen, Loader2, Save, Sparkles, Tag, Trash2, X } from 'lucide-react';
 import { formatDuration } from '../../../lib/format';
-import { formatDateTime } from '../../lib/dateFormat';
 import { audioDurationMs } from '../../lib/audioLibrary';
 
 export function DetailsPanel({
@@ -27,6 +26,8 @@ export function DetailsPanel({
   onNotesChange,
   onSave,
   onOpenFolder,
+  onArchiveAudio,
+  onDeleteAudio,
   onRequestAnalysis,
   onOpenExpanded,
   onClose,
@@ -52,6 +53,8 @@ export function DetailsPanel({
   onNotesChange: (value: string) => void;
   onSave: (recordingId: string, draft: boolean) => void;
   onOpenFolder: (recordingId: string) => void;
+  onArchiveAudio: (row: AudioRow) => void;
+  onDeleteAudio: (row: AudioRow) => void;
   onRequestAnalysis: (row: AudioRow) => void;
   onOpenExpanded: (row: AudioRow) => void;
   onClose: () => void;
@@ -157,6 +160,14 @@ export function DetailsPanel({
         <button type="button" className="details-action-btn is-success" onClick={() => onSave(selectedRow.recording.id, true)} disabled={saving || selectedRow.source === "cloud"}>
           <ChevronRight size={15} />
           Drafts
+        </button>
+        <button type="button" className="details-action-btn is-archive" onClick={() => onArchiveAudio(selectedRow)} disabled={saving}>
+          <Archive size={15} />
+          Archivar
+        </button>
+        <button type="button" className="details-action-btn is-danger" onClick={() => onDeleteAudio(selectedRow)} disabled={saving}>
+          <Trash2 size={15} />
+          Eliminar
         </button>
       </div>
 

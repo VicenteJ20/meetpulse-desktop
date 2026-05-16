@@ -313,6 +313,36 @@ export async function requestAnalysisRetry({
   return invoke("request_analysis_retry", { jobId });
 }
 
+export async function archiveCloudJob(jobId: string): Promise<void> {
+  if (!isTauriRuntime) return Promise.resolve();
+  return invoke("archive_cloud_job", { jobId });
+}
+
+export async function deleteCloudJob(jobId: string): Promise<void> {
+  if (!isTauriRuntime) return Promise.resolve();
+  return invoke("delete_cloud_job", { jobId });
+}
+
+export async function archiveCloudClient(clientSlug: string): Promise<void> {
+  if (!isTauriRuntime) return Promise.resolve();
+  return invoke("archive_cloud_client", { clientSlug });
+}
+
+export async function deleteCloudClient(clientSlug: string): Promise<void> {
+  if (!isTauriRuntime) return Promise.resolve();
+  return invoke("delete_cloud_client", { clientSlug });
+}
+
+export async function archiveCloudProject(clientSlug: string, projectSlug: string): Promise<void> {
+  if (!isTauriRuntime) return Promise.resolve();
+  return invoke("archive_cloud_project", { clientSlug, projectSlug });
+}
+
+export async function deleteCloudProject(clientSlug: string, projectSlug: string): Promise<void> {
+  if (!isTauriRuntime) return Promise.resolve();
+  return invoke("delete_cloud_project", { clientSlug, projectSlug });
+}
+
 export async function syncCloudDashboard(): Promise<CloudDashboard> {
   if (!isTauriRuntime) {
     return { clients: [], projects: [], jobs: { items: [], total: 0 } };

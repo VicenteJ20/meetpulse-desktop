@@ -95,6 +95,82 @@ impl ApiClient {
         serde_json::from_str(&body).with_context(|| format!("parsing JSON from {url}"))
     }
 
+    pub async fn post_empty(&self, path: &str) -> anyhow::Result<()> {
+        let url = self.join_path(path)?;
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .with_context(|| format!("error de red al contactar {url}"))?;
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            bail!(
+                "el backend respondio {}: {}",
+                status.as_u16(),
+                body.trim().lines().next().unwrap_or("sin detalle")
+            );
+        }
+
+        Ok(())
+    }
+
+    pub async fn delete_json(&self, path: &str) -> anyhow::Result<serde_json::Value> {
+        let url = self.join_path(path)?;
+        let response = self
+            .client
+            .delete(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .with_context(|| format!("error de red al contactar {url}"))?;
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            bail!(
+                "el backend respondio {}: {}",
+                status.as_u16(),
+                body.trim().lines().next().unwrap_or("sin detalle")
+            );
+        }
+
+        if body.trim().is_empty() {
+            return Ok(serde_json::json!({}));
+        }
+
+        serde_json::from_str(&body).with_context(|| format!("parsing JSON from {url}"))
+    }
+
+    pub async fn delete_empty(&self, path: &str) -> anyhow::Result<()> {
+        let url = self.join_path(path)?;
+        let response = self
+            .client
+            .delete(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .with_context(|| format!("error de red al contactar {url}"))?;
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            bail!(
+                "el backend respondio {}: {}",
+                status.as_u16(),
+                body.trim().lines().next().unwrap_or("sin detalle")
+            );
+        }
+
+        Ok(())
+    }
+
     pub async fn upload_transcription(
         &self,
         audio_path: &Path,

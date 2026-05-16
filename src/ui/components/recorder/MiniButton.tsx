@@ -6,18 +6,20 @@ export function MiniButton({
   icon,
   disabled,
   active,
+  variant,
   onClick,
 }: {
   label: string;
   icon: ReactNode;
   disabled?: boolean;
   active?: boolean;
+  variant?: "primary" | "danger" | "pin";
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      className={clsx("mini-button", active && "is-active")}
+      className={clsx("mini-button", variant && `is-${variant}`, active && "is-active")}
       disabled={disabled}
       onPointerDown={(event) => {
         event.stopPropagation();

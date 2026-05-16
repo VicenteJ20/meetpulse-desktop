@@ -1,7 +1,8 @@
 ﻿import { clsx } from 'clsx';
-import { ExternalLink, ListMusic, Mic, Moon, Settings, Sun, UserRound } from 'lucide-react';
+import { Archive, ExternalLink, ListMusic, Mic, Moon, Settings, Sun, Trash2, UserRound } from 'lucide-react';
 import { showWindow } from '../../../tauri/window';
 import { openExternalUrl, isTauriRuntime } from '../../../tauri/commands';
+import { unclassifiedClient } from '../../lib/libraryConstants';
 
 export function LibrarySidebar({
   appIcon,
@@ -12,6 +13,8 @@ export function LibrarySidebar({
   selectedClient,
   onDashboardViewChange,
   onThemeChange,
+  onArchiveClient,
+  onDeleteClient,
   onClientSelect,
 }: {
   appIcon: string;
@@ -22,6 +25,8 @@ export function LibrarySidebar({
   selectedClient: string;
   onDashboardViewChange: (view: 'library' | 'settings') => void;
   onThemeChange: (theme: 'light' | 'dark') => void;
+  onArchiveClient: (client: string) => void;
+  onDeleteClient: (client: string) => void;
   onClientSelect: (client: string) => void;
 }) {
   return (
@@ -107,7 +112,51 @@ export function LibrarySidebar({
               onClick={() => onClientSelect(client.name)}
             >
               <span>{client.name}</span>
-              <strong>{client.count}</strong>
+              <span className="client-nav-actions">
+                <strong>{client.count}</strong>
+                {client.name !== unclassifiedClient && (
+                  <>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="client-nav-action"
+                      title="Archivar cliente"
+                      aria-label={`Archivar ${client.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onArchiveClient(client.name);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onArchiveClient(client.name);
+                      }}
+                    >
+                      <Archive />
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="client-nav-action is-danger"
+                      title="Eliminar cliente"
+                      aria-label={`Eliminar ${client.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteClient(client.name);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onDeleteClient(client.name);
+                      }}
+                    >
+                      <Trash2 />
+                    </span>
+                  </>
+                )}
+              </span>
             </button>
           ))}
         </nav>

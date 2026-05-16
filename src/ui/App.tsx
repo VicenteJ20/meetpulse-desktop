@@ -39,6 +39,10 @@ import appIcon from "../assets/app-icon.png";
 import {
   cleanupLocalRecording,
   defaultRecordingFileName,
+  archiveCloudClient,
+  archiveCloudJob,
+  deleteCloudClient,
+  deleteCloudJob,
   getCloudJobArtifacts,
   getAudioDevices,
   getSelectedAudioDevices,
@@ -104,6 +108,7 @@ import {
   isDraftClient,
   recordingAudioPath,
   resolveAudioStatus,
+  sanitizeRelativePathPart,
   toPlayableAudioSrc,
 } from "./lib/audioLibrary";
 import type { AppTheme, AudioMetadata, AudioRow, CloudClient, CloudJob, CloudProject } from "./lib/audioTypes";
@@ -154,6 +159,7 @@ export function App() {
   const [expandedRecordingId, setExpandedRecordingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [libraryActionError, setLibraryActionError] = useState<string | null>(null);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [saveNotes, setSaveNotes] = useState("");
   const [metadataById, setMetadataById] = useState<Record<string, AudioMetadata>>(() => loadAudioMetadata());
@@ -324,8 +330,8 @@ export function App() {
     [cloudJobByRecordingId, cloudMode, metadataById, recordings],
   );
   const cloudAudioRows = useMemo<AudioRow[]>(
-    () => cloudJobs.map(cloudJobToAudioRow),
-    [cloudJobs],
+    () => cloudJobs.map((job) => cloudJobToAudioRow(job, cloudClients, cloudProjects)),
+    [cloudClients, cloudJobs, cloudProjects],
   );
   const linkedCloudJobIds = useMemo(
     () => new Set(Object.values(cloudJobByRecordingId).filter(Boolean)),
@@ -334,7 +340,7 @@ export function App() {
   const audioRows = useMemo<AudioRow[]>(
     () => [
       ...cloudAudioRows,
-      ...localAudioRows.filter((row) => !row.cloudJobId || !linkedCloudJobIds.has(row.cloudJobId)),
+      ...localAudioRows.filter((row) => row.status !== "archived" && (!row.cloudJobId || !linkedCloudJobIds.has(row.cloudJobId))),
     ],
     [cloudAudioRows, linkedCloudJobIds, localAudioRows],
   );
@@ -566,6 +572,118 @@ export function App() {
     });
   }
 
+  function removeAudioCloudJob(recordingId: string) {
+    setCloudJobByRecordingId((current) => {
+      if (!current[recordingId]) return current;
+      const next = { ...current };
+      delete next[recordingId];
+      saveAudioCloudJobs(next);
+      return next;
+    });
+  }
+
+  function clearAudioSelection() {
+    setSelectedRecordingId(null);
+    setActiveAudioId(null);
+    setExpandedRecordingId(null);
+    setSelectedArtifacts({});
+  }
+
+  function clientSlugForName(clientName: string) {
+    return cloudClients.find((client) => client.display_name === clientName || client.slug === clientName)?.slug
+      ?? sanitizeRelativePathPart(clientName);
+  }
+
+  async function handleArchiveAudio(row: AudioRow) {
+    const confirmed = window.confirm(`Archivar "${row.displayName}"? Se ocultara de la biblioteca, pero no se borraran sus archivos.`);
+    if (!confirmed) return;
+
+    setSaving(true);
+    setSaveError(null);
+    setLibraryActionError(null);
+    try {
+      if (row.source === "cloud" && row.cloudJobId) {
+        await archiveCloudJob(row.cloudJobId);
+        await refreshCloudDashboard({ showMessage: false });
+      } else {
+        updateAudioMetadata(row.recording.id, { ...row.metadata, draftState: "archived" });
+      }
+      removeAudioCloudJob(row.recording.id);
+      clearAudioSelection();
+      await refresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteAudio(row: AudioRow) {
+    const confirmed = window.confirm(`Eliminar permanentemente "${row.displayName}"? Esta accion borra el audio y no deja registro recuperable.`);
+    if (!confirmed) return;
+
+    setSaving(true);
+    setSaveError(null);
+    setLibraryActionError(null);
+    try {
+      if (row.source === "cloud" && row.cloudJobId) {
+        await deleteCloudJob(row.cloudJobId);
+        await refreshCloudDashboard({ showMessage: false });
+      } else {
+        await cleanupLocalRecording(row.recording.id);
+      }
+      removeAudioCloudJob(row.recording.id);
+      clearAudioSelection();
+      await refresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleArchiveClient(clientName: string) {
+    if (clientName === unclassifiedClient) return;
+    const confirmed = window.confirm(`Archivar cliente "${clientName}"? Se ocultaran el cliente y sus audios asociados.`);
+    if (!confirmed) return;
+
+    setLibraryActionError(null);
+    try {
+      const clientSlug = clientSlugForName(clientName);
+      await archiveCloudClient(clientSlug);
+      audioRows
+        .filter((row) => row.client === clientName && row.source === "local")
+        .forEach((row) => updateAudioMetadata(row.recording.id, { ...row.metadata, draftState: "archived" }));
+      clearAudioSelection();
+      setSelectedClient(unclassifiedClient);
+      await refreshCloudDashboard({ showMessage: false });
+      await refresh();
+    } catch (error) {
+      setLibraryActionError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleDeleteClient(clientName: string) {
+    if (clientName === unclassifiedClient) return;
+    const confirmed = window.confirm(`Eliminar permanentemente cliente "${clientName}"? Esto borra sus audios cloud y registros asociados.`);
+    if (!confirmed) return;
+
+    setLibraryActionError(null);
+    try {
+      const clientSlug = clientSlugForName(clientName);
+      await deleteCloudClient(clientSlug);
+      const localRows = audioRows.filter((row) => row.client === clientName && row.source === "local");
+      await Promise.all(localRows.map((row) => cleanupLocalRecording(row.recording.id)));
+      localRows.forEach((row) => removeAudioCloudJob(row.recording.id));
+      clearAudioSelection();
+      setSelectedClient(unclassifiedClient);
+      await refreshCloudDashboard({ showMessage: false });
+      await refresh();
+    } catch (error) {
+      setLibraryActionError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function handleSelectRecording(row: AudioRow) {
     // Close expanded view when switching to a different audio
     setExpandedRecordingId(null);
@@ -794,11 +912,12 @@ export function App() {
           micLevel={micLevel}
           systemLevel={systemLevel}
           pinned={pinned}
+          theme={theme}
+          appIcon={appIcon}
           onPrimary={handlePrimary}
           onStop={() => void stop()}
           onClose={() => void closeWindow()}
           onTogglePinned={() => setPinned((value) => !value)}
-          onExpand={() => toggleCompactMode(false)}
           onPointerDown={handleTitlebarPointerDown}
         />
       ) : (
@@ -813,6 +932,8 @@ export function App() {
               selectedClient={selectedClient}
               onDashboardViewChange={setDashboardView}
               onThemeChange={setTheme}
+              onArchiveClient={handleArchiveClient}
+              onDeleteClient={handleDeleteClient}
               onClientSelect={(client) => {
                 setSelectedClient(client);
                 setSelectedProject(allProjects);
@@ -936,6 +1057,8 @@ export function App() {
                   onNotesChange={setSaveNotes}
                   onSave={handleSave}
                   onOpenFolder={openRecordingFolder}
+                  onArchiveAudio={handleArchiveAudio}
+                  onDeleteAudio={handleDeleteAudio}
                   onRequestAnalysis={handleRequestAnalysis}
                   onOpenExpanded={handleOpenExpandedContent}
                   onClose={() => {
@@ -981,6 +1104,7 @@ export function App() {
               )}
 
               {(error || snapshot?.last_error || deviceError) && <div className="widget-error dashboard-error">{error ?? snapshot?.last_error ?? deviceError}</div>}
+              {libraryActionError && <div className="widget-error dashboard-error">{libraryActionError}</div>}
             </div>
           </section>
 

@@ -50,6 +50,20 @@
   --shadow-lg: 0 12px 24px rgba(0,0,0,0.12);
   --shadow-float: 0 20px 40px rgba(0,0,0,0.16);
   --glass-blur: blur(12px);
+
+  /* Widget-specific */
+  --widget-bg-gradient-start: var(--bg-panel);
+  --widget-bg-gradient-end: var(--bg-base);
+  --widget-time-bg: var(--accent-subtle);
+  --widget-time-color: var(--accent-primary);
+  --widget-button-bg: var(--bg-hover);
+  --widget-button-hover-bg: var(--accent-subtle);
+  --widget-button-hover-color: var(--accent-primary);
+  --widget-button-active-bg: var(--status-recording);
+  --widget-button-active-color: var(--text-inverse);
+  --widget-icon-color: var(--text-muted);
+  --widget-icon-active-mic: var(--accent-primary);
+  --widget-icon-active-system: var(--status-success);
 }
 
 :root.dark {
@@ -97,6 +111,20 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
   --shadow-lg: 0 12px 24px rgba(0,0,0,0.5);
   --shadow-float: 0 20px 40px rgba(0,0,0,0.6);
+
+  /* Widget-specific */
+  --widget-bg-gradient-start: var(--bg-panel);
+  --widget-bg-gradient-end: #1a1a2e;
+  --widget-time-bg: var(--accent-subtle);
+  --widget-time-color: var(--text-accent);
+  --widget-button-bg: rgba(255, 255, 255, 0.06);
+  --widget-button-hover-bg: var(--accent-subtle);
+  --widget-button-hover-color: var(--text-accent);
+  --widget-button-active-bg: var(--status-recording);
+  --widget-button-active-color: var(--text-inverse);
+  --widget-icon-color: var(--text-muted);
+  --widget-icon-active-mic: var(--accent-primary);
+  --widget-icon-active-system: var(--status-success);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -140,9 +168,23 @@
     --speaker-border: rgba(125, 211, 252, 0.45);
     --speaker-bg: rgba(56, 189, 248, 0.12);
 
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
-    --shadow-lg: 0 12px 24px rgba(0,0,0,0.5);
-    --shadow-float: 0 20px 40px rgba(0,0,0,0.6);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 12px 24px rgba(0,0,0,0.5);
+  --shadow-float: 0 20px 40px rgba(0,0,0,0.6);
+
+  /* Widget-specific */
+  --widget-bg-gradient-start: var(--bg-panel);
+  --widget-bg-gradient-end: #1a1a2e;
+  --widget-time-bg: var(--accent-subtle);
+  --widget-time-color: var(--text-accent);
+  --widget-button-bg: rgba(255, 255, 255, 0.06);
+  --widget-button-hover-bg: var(--accent-subtle);
+  --widget-button-hover-color: var(--text-accent);
+  --widget-button-active-bg: var(--status-recording);
+  --widget-button-active-color: var(--text-inverse);
+  --widget-icon-color: var(--text-muted);
+  --widget-icon-active-mic: var(--accent-primary);
+  --widget-icon-active-system: var(--status-success);
   }
 }

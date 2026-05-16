@@ -319,6 +319,88 @@ pub async fn request_analysis_retry(
     })
 }
 
+#[tauri::command]
+pub async fn archive_cloud_job(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<(), String> {
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticaciÃ³n")?;
+
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
+    api.post_json(&format!("/v1/jobs/{job_id}/archive")).await.map_err(to_message)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_cloud_job(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<(), String> {
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticaciÃ³n")?;
+
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
+    api.delete_json(&format!("/v1/jobs/{job_id}")).await.map_err(to_message)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn archive_cloud_client(
+    state: State<'_, AppState>,
+    client_slug: String,
+) -> Result<(), String> {
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticaciÃ³n")?;
+
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
+    api.post_empty(&format!("/v1/dashboard/clients/{client_slug}/archive")).await.map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn delete_cloud_client(
+    state: State<'_, AppState>,
+    client_slug: String,
+) -> Result<(), String> {
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticaciÃ³n")?;
+
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
+    api.delete_empty(&format!("/v1/dashboard/clients/{client_slug}")).await.map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn archive_cloud_project(
+    state: State<'_, AppState>,
+    client_slug: String,
+    project_slug: String,
+) -> Result<(), String> {
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticaciÃ³n")?;
+
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
+    api.post_empty(&format!("/v1/dashboard/clients/{client_slug}/projects/{project_slug}/archive")).await.map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn delete_cloud_project(
+    state: State<'_, AppState>,
+    client_slug: String,
+    project_slug: String,
+) -> Result<(), String> {
+    let token = state.auth.refresh_token_if_needed().await.map_err(to_message)?
+        .ok_or("no hay token de autenticaciÃ³n")?;
+
+    let api_token = token.id_token.unwrap_or(token.access_token);
+    let api = crate::api_client::ApiClient::new(api_token);
+    api.delete_empty(&format!("/v1/dashboard/clients/{client_slug}/projects/{project_slug}")).await.map_err(to_message)
+}
+
 fn to_message(error: anyhow::Error) -> String {
     error.to_string()
 }
@@ -463,5 +545,4 @@ fn copy_atomic(source: &Path, destination: &Path) -> anyhow::Result<()> {
 
     result
 }
-
 

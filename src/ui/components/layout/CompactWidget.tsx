@@ -1,8 +1,9 @@
 ﻿import type { PointerEvent } from 'react';
 import { clsx } from 'clsx';
-import { Maximize2, Mic, Minus, MonitorSpeaker, Pause, Pin, Play, Square } from 'lucide-react';
+import { Mic, Minus, MonitorSpeaker, Pause, Pin, Play, Square } from 'lucide-react';
 import { SignalIcon } from '../recorder/SignalIcon';
 import { MiniButton } from '../recorder/MiniButton';
+import type { AppTheme } from '../../lib/audioTypes';
 
 export function CompactWidget({
   duration,
@@ -13,11 +14,12 @@ export function CompactWidget({
   micLevel,
   systemLevel,
   pinned,
+  theme,
+  appIcon,
   onPrimary,
   onStop,
   onClose,
   onTogglePinned,
-  onExpand,
   onPointerDown,
 }: {
   duration: string;
@@ -28,18 +30,22 @@ export function CompactWidget({
   micLevel: number;
   systemLevel: number;
   pinned: boolean;
+  theme: AppTheme;
+  appIcon: string;
   onPrimary: () => void;
   onStop: () => void;
   onClose: () => void;
   onTogglePinned: () => void;
-  onExpand: () => void;
   onPointerDown: (event: PointerEvent<HTMLElement>) => void;
 }) {
   return (
-    <section className="compact-recorder" onPointerDown={onPointerDown}>
-      <div className="compact-status">
-        <SignalIcon icon={<Mic />} active={isRecording && micLevel > 0.01} color="mic" label="Microfono" />
-        <SignalIcon icon={<MonitorSpeaker />} active={isRecording && systemLevel > 0.01} color="system" label="Equipo" />
+    <section className={clsx("compact-recorder", theme)} onPointerDown={onPointerDown}>
+      <div className="compact-identity">
+        <img src={appIcon} alt="App" className="compact-app-icon" />
+        <div className="compact-status">
+          <SignalIcon icon={<Mic />} active={isRecording && micLevel > 0.01} color="mic" label="Microfono" />
+          <SignalIcon icon={<MonitorSpeaker />} active={isRecording && systemLevel > 0.01} color="system" label="Equipo" />
+        </div>
       </div>
       <span className="compact-time">{duration}</span>
       <div className="compact-controls">
@@ -48,12 +54,15 @@ export function CompactWidget({
           icon={isRecording ? <Pause /> : <Play />}
           disabled={isBusy}
           active={isRecording}
+          variant="primary"
           onClick={onPrimary}
         />
         <MiniButton
           label="Finalizar"
           icon={<Square />}
           disabled={isBusy || !isActive}
+          active={isActive}
+          variant="danger"
           onClick={onStop}
         />
         <MiniButton
@@ -65,12 +74,8 @@ export function CompactWidget({
           label={pinned ? "Desfijar widget" : "Fijar widget"}
           icon={<Pin />}
           active={pinned}
+          variant="pin"
           onClick={onTogglePinned}
-        />
-        <MiniButton
-          label="Vista completa"
-          icon={<Maximize2 />}
-          onClick={onExpand}
         />
       </div>
     </section>
