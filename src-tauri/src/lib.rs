@@ -16,10 +16,17 @@ mod tray;
 
 use app_state::AppState;
 use tauri::{Manager, RunEvent, WindowEvent};
+use tauri_plugin_log::log::LevelFilter;
 
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(LevelFilter::Info)
+                .level_for("meetings_assistant_recorder_lib", LevelFilter::Debug)
+                .level_for("reqwest", LevelFilter::Warn)
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())

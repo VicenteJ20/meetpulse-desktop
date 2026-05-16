@@ -1619,6 +1619,40 @@ button {
   cursor: not-allowed;
 }
 
+.audio-focus-copy-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.copy-format-toggle {
+  display: inline-flex;
+  min-width: 0;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  background: var(--bg-hover);
+}
+
+.copy-format-toggle button {
+  min-height: 24px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  padding: 0 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.copy-format-toggle button:hover,
+.copy-format-toggle button.is-active {
+  color: var(--text-primary);
+  background: var(--bg-panel);
+}
+
 .audio-focus-copy {
   display: grid;
   place-items: center;
@@ -1658,6 +1692,7 @@ button {
   overflow: auto;
   padding: 28px 36px;
   background: var(--bg-panel);
+  user-select: text;
 }
 
 
@@ -1764,6 +1799,7 @@ button {
   flex-direction: column;
   width: min(100%, 92ch);
   gap: 0;
+  user-select: text;
 }
 
 /* ── Transcript mode typography ───────────────────────── */
@@ -2984,7 +3020,7 @@ button {
     justify-content: center;
   }
 
-  .audio-focus-copy {
+  .audio-focus-copy-group {
     order: 2;
     margin-left: auto;
   }

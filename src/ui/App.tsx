@@ -177,7 +177,9 @@ export function App() {
   const [playerDurationMs, setPlayerDurationMs] = useState(0);
   const [audioDurationById, setAudioDurationById] = useState<Record<string, number>>({});
   const [playerPlaying, setPlayerPlaying] = useState(false);
+  const [playerLoading, setPlayerLoading] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
+  const [playbackAudioSrc, setPlaybackAudioSrc] = useState("");
   const [backendUrl, setBackendUrl] = useState(() => loadBackendUrl());
   const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => localStorage.getItem(transcriptionApiKeyStorageKey) ?? "");
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
@@ -193,6 +195,7 @@ export function App() {
   const [selectedArtifacts, setSelectedArtifacts] = useState<{ transcription?: string | null; analysis?: string | null }>({});
   const [artifactTab, setArtifactTab] = useState<"transcription" | "analysis">("transcription");
   const [artifactCopyState, setArtifactCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [artifactCopyFormat, setArtifactCopyFormat] = useState<"plain" | "markdown">("plain");
   const [analysisSubmitting, setAnalysisSubmitting] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -201,6 +204,7 @@ export function App() {
   const [selectedOutputId, setSelectedOutputId] = useState("");
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastPlayerUiUpdateRef = useRef(0);
 
   useEffect(() => {
     void init();
@@ -243,11 +247,6 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
     document.documentElement.classList.remove("light", "dark");
     document.documentElement.classList.add(theme);
     localStorage.setItem(themeStorageKey, theme);
@@ -279,6 +278,7 @@ export function App() {
     setPlayerCurrentMs(0);
     setPlayerDurationMs(0);
     setPlayerPlaying(false);
+    setPlaybackAudioSrc("");
     setPlayerError(null);
   }, [activeAudioId]);
 
@@ -290,6 +290,12 @@ export function App() {
   const isPaused = status === "paused";
   const isBusy = loading || status === "starting" || status === "stopping";
   const isActive = isRecording || isPaused || status === "starting" || status === "stopping";
+
+  useEffect(() => {
+    if (!isActive) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isActive]);
   const inputDevices = audioDevices.filter((device) => device.kind === "input");
   const outputDevices = audioDevices.filter((device) => device.kind === "output");
   const micLevel = snapshot?.mic.status === "recording" ? (snapshot?.mic.rms ?? 0) : 0;
@@ -379,8 +385,61 @@ export function App() {
   const selectedHasCloudArtifacts = Boolean(selectedCloudJob?.has_transcription || selectedCloudJob?.has_analysis);
   const selectedCanRetryAnalysis = Boolean(selectedCloudJob?.has_transcription);
   const selectedArtifactContent = artifactTab === "analysis" ? selectedArtifacts.analysis : selectedArtifacts.transcription;
-  const selectedArtifactBlocks = parseMarkdownBlocks(selectedArtifactContent);
+  const selectedArtifactBlocks = useMemo(() => parseMarkdownBlocks(selectedArtifactContent), [selectedArtifactContent]);
   const expandedContentOpen = Boolean(selectedRow && expandedRecordingId === selectedRow.recording.id);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    async function preparePlaybackSource() {
+      audioRef.current?.pause();
+      setPlayerPlaying(false);
+      setPlayerCurrentMs(0);
+      setPlayerDurationMs(0);
+      setPlayerError(null);
+      setPlaybackAudioSrc("");
+
+      if (!activeAudioSrc) {
+        setPlayerLoading(false);
+        return;
+      }
+
+      if (!isTauriRuntime || /^https?:\/\//i.test(activeAudioSrc)) {
+        setPlaybackAudioSrc(activeAudioSrc);
+        setPlayerLoading(false);
+        return;
+      }
+
+      setPlayerLoading(true);
+      try {
+        const response = await fetch(activeAudioSrc, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`No se pudo leer el audio (${response.status})`);
+        }
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+        if (!cancelled) {
+          setPlaybackAudioSrc(objectUrl);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPlayerError(error instanceof Error ? error.message : "No se pudo preparar el audio");
+        }
+      } finally {
+        if (!cancelled) {
+          setPlayerLoading(false);
+        }
+      }
+    }
+
+    void preparePlaybackSource();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [activeAudioSrc]);
 
   useEffect(() => {
     let cancelled = false;
@@ -547,7 +606,7 @@ export function App() {
   }
 
   async function handlePlayerPlay() {
-    if (!audioRef.current || !activeAudioSrc) return;
+    if (!audioRef.current || !playbackAudioSrc || playerLoading) return;
     setPlayerError(null);
     try {
       await audioRef.current.play();
@@ -567,8 +626,16 @@ export function App() {
     if (!audioRef.current) return;
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
+    lastPlayerUiUpdateRef.current = 0;
     setPlayerCurrentMs(0);
     setPlayerPlaying(false);
+  }
+
+  function handlePlayerTimeUpdate(currentTime: number, force = false) {
+    const nowMs = performance.now();
+    if (!force && nowMs - lastPlayerUiUpdateRef.current < 500) return;
+    lastPlayerUiUpdateRef.current = nowMs;
+    setPlayerCurrentMs(Math.round(currentTime * 1000));
   }
 
   async function handleRequestAnalysis(row: AudioRow) {
@@ -698,7 +765,11 @@ export function App() {
     if (!selectedArtifactContent?.trim()) return;
 
     try {
-      await copyTextToClipboard(selectedArtifactContent);
+      const text =
+        artifactCopyFormat === "markdown"
+          ? selectedArtifactContent
+          : markdownBlocksToPlainText(selectedArtifactBlocks, selectedArtifactContent);
+      await copyTextToClipboard(text);
       setArtifactCopyState("copied");
       window.setTimeout(() => setArtifactCopyState("idle"), 1800);
     } catch {
@@ -1051,16 +1122,34 @@ export function App() {
                         </button>
                       </div>
 
-                      <button
-                        type="button"
-                        className={clsx("audio-focus-copy", artifactCopyState === "copied" && "is-copied", artifactCopyState === "error" && "is-error")}
-                        onClick={() => void handleCopyArtifact()}
-                        disabled={!selectedArtifactContent?.trim()}
-                        title={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"}`}
-                        aria-label={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"}`}
-                      >
-                        {artifactCopyState === "copied" ? <CheckCircle2 size={15} /> : <Copy size={15} />}
-                      </button>
+                      <div className="audio-focus-copy-group" aria-label="Opciones de copia">
+                        <div className="copy-format-toggle" role="group" aria-label="Formato de copia">
+                          <button
+                            type="button"
+                            className={clsx(artifactCopyFormat === "plain" && "is-active")}
+                            onClick={() => setArtifactCopyFormat("plain")}
+                          >
+                            Texto
+                          </button>
+                          <button
+                            type="button"
+                            className={clsx(artifactCopyFormat === "markdown" && "is-active")}
+                            onClick={() => setArtifactCopyFormat("markdown")}
+                          >
+                            Markdown
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className={clsx("audio-focus-copy", artifactCopyState === "copied" && "is-copied", artifactCopyState === "error" && "is-error")}
+                          onClick={() => void handleCopyArtifact()}
+                          disabled={!selectedArtifactContent?.trim()}
+                          title={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"} como ${artifactCopyFormat === "markdown" ? "Markdown" : "texto"}`}
+                          aria-label={`Copiar ${artifactTab === "analysis" ? "analisis" : "transcripcion"} como ${artifactCopyFormat === "markdown" ? "Markdown" : "texto"}`}
+                        >
+                          {artifactCopyState === "copied" ? <CheckCircle2 size={15} /> : <Copy size={15} />}
+                        </button>
+                      </div>
                     </div>
 
                     {/* ── Content area ──────────────────────────────── */}
@@ -1270,13 +1359,13 @@ export function App() {
                 </div>
                 {activeAudioSrc ? (
                   <div className="player-controls">
-                    <button type="button" onClick={() => void handlePlayerPlay()} disabled={!activeAudioSrc || playerPlaying} aria-label="Reproducir" title="Reproducir">
+                    <button type="button" onClick={() => void handlePlayerPlay()} disabled={!playbackAudioSrc || playerLoading || playerPlaying} aria-label="Reproducir" title="Reproducir">
                       <Play />
                     </button>
-                    <button type="button" onClick={handlePlayerPause} disabled={!activeAudioSrc || !playerPlaying} aria-label="Pausar" title="Pausar">
+                    <button type="button" onClick={handlePlayerPause} disabled={!playbackAudioSrc || !playerPlaying} aria-label="Pausar" title="Pausar">
                       <Pause />
                     </button>
-                    <button type="button" onClick={handlePlayerStop} disabled={!activeAudioSrc} aria-label="Detener" title="Detener">
+                    <button type="button" onClick={handlePlayerStop} disabled={!playbackAudioSrc} aria-label="Detener" title="Detener">
                       <Square />
                     </button>
                     <div className="player-progress" aria-label="Progreso">
@@ -1286,9 +1375,10 @@ export function App() {
                         min={0}
                         max={Math.max(visiblePlayerDuration, 1)}
                         value={Math.min(playerCurrentMs, Math.max(visiblePlayerDuration, 1))}
-                        disabled={!activeAudioSrc}
+                        disabled={!playbackAudioSrc || playerLoading}
                         onChange={(event) => {
                           const nextMs = Number(event.currentTarget.value);
+                          lastPlayerUiUpdateRef.current = 0;
                           setPlayerCurrentMs(nextMs);
                           if (audioRef.current) {
                             audioRef.current.currentTime = nextMs / 1000;
@@ -1300,18 +1390,19 @@ export function App() {
                     </div>
                     <audio
                       ref={audioRef}
-                      key={activeAudioSrc}
-                      preload="metadata"
-                      src={activeAudioSrc}
+                      key={playbackAudioSrc || activeAudioSrc}
+                      preload="auto"
+                      src={playbackAudioSrc || undefined}
                       onLoadedMetadata={(event) => {
                         const seconds = event.currentTarget.duration;
                         const nextDurationMs = Number.isFinite(seconds) ? Math.round(seconds * 1000) : 0;
+                        handlePlayerTimeUpdate(event.currentTarget.currentTime, true);
                         setPlayerDurationMs(nextDurationMs);
                         if (activeRow && nextDurationMs > 0) {
                           setAudioDurationById((current) => ({ ...current, [activeRow.recording.id]: nextDurationMs }));
                         }
                       }}
-                      onTimeUpdate={(event) => setPlayerCurrentMs(Math.round(event.currentTarget.currentTime * 1000))}
+                      onTimeUpdate={(event) => handlePlayerTimeUpdate(event.currentTarget.currentTime)}
                       onPause={() => setPlayerPlaying(false)}
                       onPlay={() => setPlayerPlaying(true)}
                       onEnded={handlePlayerStop}
@@ -1320,7 +1411,7 @@ export function App() {
                         setPlayerError("No se pudo cargar el archivo de audio");
                       }}
                     />
-                    {playerError && <span className="player-error">{playerError}</span>}
+                    {(playerLoading || playerError) && <span className="player-error">{playerLoading ? "Preparando audio..." : playerError}</span>}
                   </div>
                 ) : (
                   <div className="player-placeholder">Audio no disponible</div>
@@ -2132,6 +2223,40 @@ function parseMarkdownInline(value: string): MarkdownInlinePart[] {
   }
 
   return parts.length > 0 ? parts : [{ type: "text", value }];
+}
+
+function markdownBlocksToPlainText(blocks: MarkdownBlockData[], fallback: string): string {
+  if (blocks.length === 0) return markdownToPlainText(fallback);
+
+  return blocks
+    .flatMap((block) => {
+      if (block.type === "heading" || block.type === "paragraph" || block.type === "quote") return [block.text];
+      if (block.type === "meta") return [`${block.label}: ${block.value}`];
+      if (block.type === "list") return block.items;
+      if (block.type === "code") return [block.text];
+      if (block.type === "table") return [[block.headers.join(" | "), ...block.rows.map((row) => row.join(" | "))].join("\n")];
+      return [];
+    })
+    .map((line) => markdownToPlainText(line).trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function markdownToPlainText(value: string): string {
+  return value
+    .replace(/^---[\s\S]*?---\s*/m, "")
+    .replace(/```[\w-]*\n([\s\S]*?)```/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+[.)]\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 async function copyTextToClipboard(text: string): Promise<void> {

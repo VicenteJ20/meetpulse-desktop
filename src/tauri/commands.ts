@@ -1,6 +1,28 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 
 export const isTauriRuntime = "__TAURI_INTERNALS__" in window;
+
+async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const delays = [120, 240, 480, 960];
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return await tauriInvoke<T>(command, args);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("state not managed") || attempt === delays.length) break;
+      await sleep(delays[attempt]);
+    }
+  }
+
+  throw lastError;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 export type RecordingStatus =
   | "idle"
