@@ -182,6 +182,7 @@ export function App() {
   const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => localStorage.getItem(transcriptionApiKeyStorageKey) ?? "");
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [theme, setTheme] = useState<AppTheme>(() => loadStoredTheme());
+  const visualTheme: AppTheme = theme;
   const [cloudClients, setCloudClients] = useState<CloudClient[]>([]);
   const [cloudProjects, setCloudProjects] = useState<CloudProject[]>([]);
   const [cloudJobs, setCloudJobs] = useState<CloudJob[]>([]);
@@ -255,8 +256,22 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const handleThemeStorage = (event: StorageEvent) => {
+      if (event.key !== themeStorageKey) return;
+      if (event.newValue !== "light" && event.newValue !== "dark") return;
+      setTheme(event.newValue);
+    };
+
+    window.addEventListener("storage", handleThemeStorage);
+    return () => window.removeEventListener("storage", handleThemeStorage);
+  }, []);
+
+  useEffect(() => {
     document.documentElement.classList.remove("light", "dark");
-    document.documentElement.classList.add(theme);
+    document.documentElement.classList.add(visualTheme);
+  }, [visualTheme]);
+
+  useEffect(() => {
     localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
 
@@ -1003,7 +1018,7 @@ export function App() {
           micLevel={micLevel}
           systemLevel={systemLevel}
           pinned={pinned}
-          theme={theme}
+          theme={visualTheme}
           appIcon={appIcon}
           onPrimary={handlePrimary}
           onStop={() => void stop()}
