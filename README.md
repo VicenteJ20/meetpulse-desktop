@@ -1,3 +1,5 @@
+![MeetPulse Icon](/src/assets/app-icon-sm.png)
+
 # MeetPulse
 
 A lightweight Windows desktop app for recording meetings locally with resilience, low memory usage, and native audio capture.
