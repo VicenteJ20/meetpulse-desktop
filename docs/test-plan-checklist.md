@@ -2,38 +2,45 @@
 
 ## Base app
 
-- [ ] La ventana abre como widget flotante.
-- [ ] Los botones cambian de estado correctamente.
-- [ ] La app crea `AppData\\Local\\MeetingsAssistant`.
-- [ ] SQLite se crea y migra sin errores.
+- [x] Window opens as floating widget
+- [x] Buttons change state correctly
+- [x] App creates `AppData\Local\MeetingsAssistant`
+- [x] SQLite creates and migrates without errors
 
-## Segmentacion
+## Segmentation
 
-- [ ] Cada segmento se escribe primero como `.tmp`.
-- [ ] El segmento confirmado queda como `.opus` Ogg Opus.
-- [ ] `manifest.json` se actualiza de forma atomica.
-- [ ] SQLite registra segmentos confirmados.
-- [ ] El uso de RAM permanece estable.
+- [x] Each segment is first written as `.tmp`
+- [x] Confirmed segment becomes `.opus` Ogg Opus
+- [x] `manifest.json` updates atomically
+- [x] SQLite registers confirmed segments
+- [x] RAM usage remains stable
 
 ## Recovery
 
-- [ ] Al iniciar, elimina `.tmp` antiguos.
-- [ ] Al iniciar, remueve locks viejos.
-- [ ] Una sesion `recording` queda como `interrupted_recovered`.
-- [ ] Los segmentos confirmados se vuelven a registrar en SQLite.
+- [x] On startup, removes old `.tmp` files
+- [x] On startup, removes stale locks
+- [x] A `recording` session becomes `interrupted_recovered`
+- [x] Confirmed segments re-registered in SQLite
 
-## Stop seguro
+## Safe stop
 
-- [ ] Detener cambia a `stopping`.
-- [ ] El ultimo segmento se confirma.
-- [ ] El manifest queda como `completed`.
-- [ ] Se genera solo `final/mixed.opus`.
-- [ ] La UI lista la grabacion.
+- [x] Stop transitions to `stopping`
+- [x] Last segment is confirmed
+- [x] Manifest becomes `completed`
+- [x] Only `final/mixed.opus` is generated
+- [x] UI lists the recording
 
-## Audio nativo
+## Native audio
 
-- [ ] Grabacion de microfono por 5 minutos.
-- [ ] Grabacion de audio del PC desde navegador.
-- [ ] Grabacion dual-track simultanea.
-- [ ] Pausa/reanudar sin perdida de control.
-- [ ] Desconexion de microfono reporta error recuperable.
+- [x] Microphone recording for 5+ minutes
+- [x] PC audio recording from browser playback
+- [x] Dual-track simultaneous recording
+- [x] Pause/resume without loss of control
+- [ ] Microphone disconnect reports recoverable error
+
+## Cloud sync
+
+- [x] OAuth2 Google login flow
+- [x] Recording upload to backend
+- [x] Transcription request via AI pipeline
+- [ ] Calendar meeting matching

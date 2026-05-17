@@ -1,44 +1,46 @@
-# Roadmap de audio nativo
+# Native Audio Roadmap
 
-## Fase 1: microfono con CPAL
+## Phase 1: Microphone with CPAL
 
-- Enumerar dispositivos de entrada.
-- Usar microfono default si no hay seleccion.
-- Abrir stream input con config soportada.
-- Convertir sample format a `f32`.
-- Resamplear a 48 kHz si corresponde.
-- Mezclar canales a mono.
-- Enviar frames de 20 ms al encoder.
-- Reportar RMS y clipping por ventana.
+- [x] Enumerate input devices
+- [x] Use default microphone if no selection
+- [x] Open input stream with supported config
+- [x] Convert sample format to `f32`
+- [x] Mix channels to mono
+- [x] Send 20 ms frames to the encoder
 
-## Fase 2: system audio con WASAPI loopback
+### Pending
 
-- Obtener render endpoint default.
-- Inicializar `IAudioClient` en modo loopback.
-- Capturar buffer por paquetes.
-- Manejar silencio sin emitir errores.
-- Mantener stereo en MVP.
-- Reintentar si cambia el dispositivo default.
+- [ ] Defensive resampling to 48 kHz for devices that don't support it natively
 
-## Fase 3: encoder Ogg Opus
+## Phase 2: System audio with WASAPI loopback
 
-- Crear encoder por track.
-- Usar 48 kHz.
-- Mic mono a 48 kbps.
-- System stereo a 64 kbps.
-- Cerrar pagina Ogg al finalizar cada segmento.
-- Escribir metadata minima para trazabilidad.
+- [x] Get default render endpoint
+- [x] Initialize `IAudioClient` in loopback mode
+- [x] Capture buffer per packet
+- [x] Handle silence without emitting errors
+- [x] Maintain stereo in MVP
+- [x] Retry if default device changes
 
-## Fase 4: mezcla final
+## Phase 3: Ogg Opus encoder
 
-- Decodificar segmentos `mic/*.opus` y `system/*.opus`.
-- Alinear por timestamps de segmento.
-- Aplicar headroom para evitar clipping.
-- Codificar `final/mixed.opus`.
+- [x] Create encoder per track
+- [x] Use 48 kHz
+- [x] Mic mono at 48 kbps
+- [x] System stereo at 64 kbps
+- [x] Close Ogg page on each segment finalization
+- [x] Write minimal metadata for traceability
 
-## Riesgos
+## Phase 4: Final mixing
 
-- WASAPI loopback puede entregar formatos distintos por dispositivo.
-- Suspender/reanudar Windows puede invalidar clientes de audio.
-- Algunos dispositivos Bluetooth cambian sample rate dinamicamente.
-- La mezcla final requiere sincronizacion temporal real, no solo concatenacion.
+- [x] Decode `mic/*.opus` and `system/*.opus` segments
+- [x] Align by segment timestamps
+- [x] Apply headroom to avoid clipping
+- [x] Encode `final/mixed.opus`
+
+## Risks
+
+- WASAPI loopback may deliver different formats per device
+- Windows suspend/resume can invalidate audio clients
+- Some Bluetooth devices change sample rate dynamically
+- Final mixing requires real temporal synchronization, not just concatenation

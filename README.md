@@ -1,179 +1,192 @@
 # MeetPulse
 
-Aplicacion desktop ligera para Windows orientada a grabar reuniones de forma local, resiliente y con bajo uso de memoria.
+A lightweight Windows desktop app for recording meetings locally with resilience, low memory usage, and native audio capture.
 
-## Stack
+![Tauri](https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
+![Rust](https://img.shields.io/badge/Rust-1.78+-black?logo=rust)
+![License](https://img.shields.io/badge/license-Private-blue)
 
-- Tauri 2
-- React + TypeScript + Vite
-- Tailwind CSS
-- Rust
-- SQLite local
-- Arquitectura preparada para CPAL y WASAPI loopback
+## Features
 
-## Estado actual
+- **Native audio capture** — Microphone and desktop audio via WASAPI loopback (Rust + CPAL)
+- **Resilient recording** — Atomic segment writes, crash recovery, and session restoration
+- **Local-first** — Recordings stored in `AppData\Local\MeetingsAssistant` with SQLite metadata
+- **Floating widget** — Minimal always-on-top control bar for start/pause/stop
+- **Opus encoding** — Ogg Opus output with segment-level manifest tracking
+- **Google Calendar integration** — OAuth2 authentication for meeting context (planned)
 
-Esta base implementa el control plane completo del MVP:
+## Architecture
 
-- widget flotante
-- comandos Tauri para iniciar, pausar, reanudar y detener
-- estructura de AppData en `AppData\\Local\\MeetingsAssistant`
-- SQLite con `recordings`, `segments`, `app_events` y `device_history`
-- `manifest.json` por grabacion
-- segmentos resilientes con escritura temporal y rename atomico
-- recovery de sesiones interrumpidas
-- finalizacion local valida con mezcla Ogg Opus en `final/mixed.opus`
+MeetPulse follows a strict separation between UI and audio core:
 
-El flujo real vive en Rust: `native-audio` captura microfono y audio del escritorio con WASAPI, codifica Opus y deja Tauri/React solo como UI.
-
-## Requisitos de desarrollo
-
-- Node.js 20+
-- npm 10+
-- Rust estable
-- Microsoft C++ Build Tools
-- WebView2 Runtime
-
-## Configuracion del backend
-
-La app necesita conocer la URL base del backend antes de compilar. Copia el archivo de ejemplo y ajusta ambas variables con el mismo valor:
-
-```powershell
-Copy-Item .env.example .env
+```
+React/TypeScript (UI)  ←Tauri IPC→  Rust (audio, storage, recovery)
 ```
 
-Para desarrollo local:
+The Rust backend handles all native operations: WASAPI capture, Opus encoding, SQLite persistence, atomic segment writes, and crash recovery. The frontend is a thin control plane that sends commands and receives events.
 
-```env
-MEETPULSE_BACKEND_URL=http://localhost:8000
-VITE_MEETPULSE_BACKEND_URL=http://localhost:8000
-```
+See [docs/architecture.md](docs/architecture.md) for the full technical breakdown.
 
-Para generar el bundle final, reemplaza ambas por la URL desplegada del backend antes de ejecutar el build:
+## Tech Stack
 
-```env
-MEETPULSE_BACKEND_URL=https://api.mi-backend.com
-VITE_MEETPULSE_BACKEND_URL=https://api.mi-backend.com
-```
+| Layer       | Technology                          |
+|-------------|-------------------------------------|
+| UI          | React 18 + TypeScript + Zustand     |
+| Styling     | Tailwind CSS + Lucide Icons         |
+| Build       | Vite 5                              |
+| Desktop     | Tauri 2                             |
+| Audio core  | Rust, CPAL, WASAPI, Opus            |
+| Storage     | SQLite (rusqlite bundled)           |
+| Auth        | OAuth2 (Google Calendar, planned)   |
 
-`MEETPULSE_BACKEND_URL` queda embebida en el binario Tauri/Rust y controla las llamadas cloud reales. `VITE_MEETPULSE_BACKEND_URL` queda embebida en el bundle web y se usa como valor inicial del setup en navegador. Si compilas en modo release sin `MEETPULSE_BACKEND_URL`, el build falla para evitar publicar una app apuntando al backend equivocado.
+## Quick Start
 
-## Comandos
+### Prerequisites
 
-Entry point recomendado en desarrollo:
+- **Node.js** 20+ and npm 10+
+- **Rust** stable (1.78+) via [rustup](https://rustup.rs/)
+- **Microsoft C++ Build Tools** (for native dependencies)
+- **WebView2 Runtime** (preinstalled on Windows 10/11)
+
+### Setup
+
+1. Clone the repository
+2. Copy and configure environment variables:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+3. Edit `.env` with your backend URL and optional Google OAuth credentials:
+
+   ```env
+   MEETPULSE_BACKEND_URL=http://localhost:8000
+   VITE_MEETPULSE_BACKEND_URL=http://localhost:8000
+   GOOGLE_CLIENT_ID=your_google_client_id_here
+   GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+   ```
+
+### Development
+
+**Recommended** — use the dev runner (validates prerequisites, installs deps, handles Cargo target dir):
 
 ```powershell
 .\dev.ps1
 ```
 
-Tambien puedes usar:
+**Alternative** — manual commands:
 
-```bat
-dev.cmd
+```powershell
+npm install
+npm run tauri:dev
 ```
 
-Ese runner valida Node/npm/Rust, instala dependencias si falta `node_modules` y levanta Tauri.
-Tambien redirige `CARGO_TARGET_DIR` a `C:\tmp\meetings-recorder-cargo-target` cuando existe esa carpeta, para evitar que Windows Application Control bloquee ejecutables generados dentro de `Documents` o `%TEMP%`.
-
-Si tu Windows bloquea Cargo con `os error 4551`, usa el modo web mock para avanzar UI/estado sin compilar Rust:
+**Web mock mode** — if Windows Application Control blocks Cargo executables (`os error 4551`):
 
 ```powershell
 .\dev-web.ps1
 ```
 
-Este modo corre Vite en navegador y simula los comandos Tauri. No graba audio ni escribe en AppData.
+This runs Vite in the browser with mocked Tauri commands. No audio capture or AppData writes.
 
-Comandos manuales equivalentes:
+### Build
 
-```bash
-npm install
-npm run tauri:dev
+```powershell
+$env:MEETPULSE_BACKEND_URL="https://your-api.com"
+$env:VITE_MEETPULSE_BACKEND_URL="https://your-api.com"
+npm run tauri:build
 ```
 
-Si Windows muestra `os error 4551`, una politica de Application Control bloqueo un ejecutable generado por Cargo. En ese caso:
+Output installers (`.msi` / `.exe`) will be in `src-tauri/target/release/bundle/`.
+
+## Recording Storage
+
+Recordings are stored locally at:
+
+```
+C:\Users\<user>\AppData\Local\MeetingsAssistant\
+```
+
+Each recording follows this structure:
+
+```
+recordings/
+  rec_yyyy-mm-dd_hh-mm-ss_xxxxxx/
+    manifest.json      # segment metadata and status
+    lock               # active recording lock file
+    mic/               # microphone Opus segments
+    system/            # desktop audio Opus segments
+    final/
+      mixed.opus       # final mixed output
+```
+
+## Project Structure
+
+```
+src/                          # Frontend (React + TypeScript)
+  lib/                        # Shared utilities
+  hooks/                      # React custom hooks
+  store/                      # Zustand state management
+  tauri/                      # Tauri command bindings
+  ui/                         # Components and views
+
+src-tauri/                    # Backend (Rust + Tauri)
+  src/
+    commands.rs               # Tauri command handlers
+    recorder.rs               # Recording lifecycle manager
+    audio.rs                  # Device enumeration and capture
+    finalizer.rs              # Final audio mixing and output
+    manifest.rs               # Atomic manifest writer
+    recovery.rs               # Crash recovery and cleanup
+    storage.rs                # SQLite database and queries
+    paths.rs                  # AppData path resolution
+    app_state.rs              # Shared application state
+
+docs/                         # Technical documentation
+```
+
+## Troubleshooting
+
+### Windows Application Control blocks Cargo (`os error 4551`)
+
+Redirect the Cargo target directory to an allowed path:
+
+```powershell
+.\dev.ps1 -CargoTargetDir "C:\tmp\meetings-recorder-cargo-target"
+```
+
+Or set it manually:
 
 ```powershell
 $env:CARGO_TARGET_DIR="C:\tmp\meetings-recorder-cargo-target"
 .\dev.ps1
 ```
 
-O pasalo como parametro, que es mas explicito:
+See [docs/windows-application-control.md](docs/windows-application-control.md) for details.
+
+### Native audio feature requires CMake
+
+The `native-audio` feature compiles `opus` via `audiopus_sys`, which may need CMake. Install it via [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) or [chocolatey](https://chocolatey.org/):
 
 ```powershell
-.\dev.ps1 -CargoTargetDir "C:\tmp\meetings-recorder-cargo-target"
+winget install Kitware.CMake
 ```
 
-Si aun ocurre, la politica de seguridad debe permitir Rust build scripts o debes ejecutar el desarrollo desde WSL.
-
-Mas detalle: [docs/windows-application-control.md](docs/windows-application-control.md)
-
-Build:
-
-```bash
-npm run tauri:build
-```
-
-O definiendo la URL desde PowerShell para ese build:
+Use `mock-audio` feature for UI development without native dependencies:
 
 ```powershell
-$env:MEETPULSE_BACKEND_URL="https://api.mi-backend.com"
-$env:VITE_MEETPULSE_BACKEND_URL="https://api.mi-backend.com"
-npm run tauri:build
+.\dev.ps1 -MockAudio
 ```
 
-Activar captura nativa cuando los workers esten implementados:
+## Roadmap
 
-```bash
-cargo run --manifest-path src-tauri/Cargo.toml --features native-audio
-```
+- [ ] Defensive resampling for devices that don't support 48 kHz
+- [ ] Unit tests for recovery, segment writer, and final mixing
+- [ ] Device health metrics in `device_history` table
+- [ ] Google Calendar integration for automatic meeting detection
+- [ ] Cloud sync and AI transcription pipeline
 
-Nota: `native-audio` activa dependencias como CPAL, WASAPI y Opus. En Windows, `opus` puede requerir CMake porque compila `audiopus_sys`. Usa `.\dev.ps1 -MockAudio` para desarrollo de UI sin dependencias nativas.
+## License
 
-## Estructura
-
-```text
-src/
-  lib/
-  store/
-  tauri/
-  ui/
-
-src-tauri/
-  src/
-    audio.rs
-    app_state.rs
-    commands.rs
-    finalizer.rs
-    manifest.rs
-    paths.rs
-    recorder.rs
-    recovery.rs
-    storage.rs
-```
-
-## Persistencia local
-
-La app escribe en:
-
-```text
-C:\\Users\\<usuario>\\AppData\\Local\\MeetingsAssistant
-```
-
-Cada grabacion queda con esta forma:
-
-```text
-recordings/
-  rec_yyyy-mm-dd_hh-mm-ss_xxxxxx/
-    manifest.json
-    lock
-    mic/
-    system/
-    final/
-      mixed.opus
-```
-
-## Roadmap tecnico inmediato
-
-1. Agregar resampling defensivo si algun dispositivo no acepta 48 kHz.
-2. Agregar pruebas de recovery, segment writer y mezcla final.
-3. Persistir metricas de salud de dispositivo en `device_history`.
+Private — All rights reserved. © 2026 Vicente Jorquera.
