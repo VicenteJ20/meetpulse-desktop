@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDuration } from "../lib/format";
-import appIcon from "../assets/app-icon.png";
+import appIcon from "../../src-tauri/icons/icon.png";
 import {
   cleanupLocalRecording,
   defaultRecordingFileName,
@@ -65,6 +65,7 @@ import {
   currentWindowLabel,
   minimizeWindow,
   setWindowAlwaysOnTop,
+  setWindowIcon,
   showWindow,
   startWindowDrag,
   toggleWindowMaximize,
@@ -212,6 +213,7 @@ export function App() {
   useEffect(() => {
     void init();
     void initAuth();
+    void setWindowIcon(appIcon);
   }, [init, initAuth]);
 
   useEffect(() => {
@@ -288,8 +290,8 @@ export function App() {
 
   useEffect(() => {
     localStorage.setItem("recorder-window-pinned", pinned ? "true" : "false");
-    void setWindowAlwaysOnTop(pinned);
-  }, [pinned]);
+    void setWindowAlwaysOnTop(isWidgetWindow ? pinned : false);
+  }, [isWidgetWindow, pinned]);
 
   useEffect(() => {
     setSaveError(null);
@@ -999,9 +1001,7 @@ export function App() {
       {!compactView && (
         <WindowTitlebar
           icon={appIcon}
-          pinned={pinned}
           onPointerDown={handleTitlebarPointerDown}
-          onTogglePinned={() => setPinned((value) => !value)}
           onMinimize={() => void minimizeWindow()}
           onMaximize={() => void toggleWindowMaximize()}
           onClose={() => void closeWindow()}

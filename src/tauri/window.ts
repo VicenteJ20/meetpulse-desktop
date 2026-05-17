@@ -2,7 +2,7 @@ import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { Window, currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauriRuntime } from "./commands";
 
-const FULL_WINDOW = { width: 1120, height: 720 };
+const FULL_WINDOW = { width: 1530, height: 890 };
 const FULL_WINDOW_MIN = { width: 920, height: 620 };
 const COMPACT_WINDOW = { width: 430, height: 56 };
 
@@ -29,6 +29,13 @@ export async function startWindowDrag() {
 export async function setWindowAlwaysOnTop(pinned: boolean) {
   if (!isTauriRuntime) return;
   await getCurrentWindow().setAlwaysOnTop(pinned);
+}
+
+export async function setWindowIcon(iconSrc: string) {
+  if (!isTauriRuntime) return;
+  const response = await fetch(iconSrc);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  await getCurrentWindow().setIcon(bytes);
 }
 
 export function currentWindowLabel(): string {
