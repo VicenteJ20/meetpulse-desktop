@@ -1,5 +1,6 @@
+import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
-import { AuthState, getAuthState, logoutAuth, startGoogleAuth } from "../tauri/commands";
+import { AuthState, getAuthState, isTauriRuntime, logoutAuth, startGoogleAuth } from "../tauri/commands";
 
 type AuthStore = {
   authState: AuthState | null;
@@ -9,6 +10,8 @@ type AuthStore = {
   login: () => Promise<void>;
   logout: () => Promise<void>;
 };
+
+let authEventsInitialized = false;
 
 export const useAuthStore = create<AuthStore>((set) => ({
   authState: null,
@@ -20,6 +23,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
     try {
       const authState = await getAuthState();
       set({ authState, loading: false, error: null });
+
+      if (isTauriRuntime && !authEventsInitialized) {
+        authEventsInitialized = true;
+        await listen<AuthState>("auth://state-changed", (event) => {
+          set({ authState: event.payload, loading: false, error: null });
+        });
+      }
     } catch (error) {
       set({ error: error instanceof Error ? error.message : String(error), loading: false });
     }

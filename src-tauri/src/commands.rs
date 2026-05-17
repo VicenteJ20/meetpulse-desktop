@@ -236,12 +236,22 @@ pub async fn get_auth_state(state: State<'_, AppState>) -> Result<AuthState, Str
 
 #[tauri::command]
 pub async fn start_google_auth(app: AppHandle, state: State<'_, AppState>) -> Result<AuthState, String> {
-    state.auth.start_oauth_flow(app).await.map_err(to_message)
+    let auth_state = state.auth.start_oauth_flow(app.clone()).await.map_err(to_message)?;
+    let _ = app.emit("auth://state-changed", auth_state.clone());
+    Ok(auth_state)
 }
 
 #[tauri::command]
-pub async fn logout_auth(state: State<'_, AppState>) -> Result<(), String> {
-    state.auth.delete_tokens().map_err(to_message)
+pub async fn logout_auth(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.auth.delete_tokens().map_err(to_message)?;
+    let _ = app.emit(
+        "auth://state-changed",
+        AuthState {
+            is_authenticated: false,
+            email: None,
+        },
+    );
+    Ok(())
 }
 
 #[tauri::command]
