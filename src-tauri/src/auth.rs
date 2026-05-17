@@ -6,18 +6,22 @@ use std::time::Duration;
 use anyhow::{bail, Context};
 use keyring::Entry;
 use oauth2::basic::BasicClient;
-use oauth2::reqwest::async_http_client;
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, Scope, TokenResponse, TokenUrl,
+    AuthUrl, ClientId, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, Scope, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 
-const GOOGLE_CLIENT_ID: &str = "YOUR_GOOGLE_CLIENT_ID";
-const GOOGLE_CLIENT_SECRET: &str = "YOUR_GOOGLE_CLIENT_SECRET";
+fn google_client_id() -> String {
+    std::env::var("GOOGLE_CLIENT_ID").expect("GOOGLE_CLIENT_ID must be set")
+}
+
+fn google_client_secret() -> String {
+    std::env::var("GOOGLE_CLIENT_SECRET").expect("GOOGLE_CLIENT_SECRET must be set")
+}
 const SERVICE_NAME: &str = "meetings-recorder";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,8 +53,8 @@ impl GoogleAuth {
     pub async fn init(&self, port: u16) -> anyhow::Result<()> {
         let redirect_url = format!("http://localhost:{}/callback", port);
         let client = BasicClient::new(
-            ClientId::new(GOOGLE_CLIENT_ID.to_string()),
-            Some(oauth2::ClientSecret::new(GOOGLE_CLIENT_SECRET.to_string())),
+            ClientId::new(google_client_id()),
+            Some(oauth2::ClientSecret::new(google_client_secret())),
             AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())?,
             Some(TokenUrl::new(
                 "https://oauth2.googleapis.com/token".to_string(),
@@ -211,9 +215,11 @@ impl GoogleAuth {
         tracing::info!("Intercambiando código por tokens...");
         
         let req_client = reqwest::Client::new();
+        let client_id = google_client_id();
+        let client_secret = google_client_secret();
         let params = [
-            ("client_id", GOOGLE_CLIENT_ID),
-            ("client_secret", GOOGLE_CLIENT_SECRET),
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
             ("code", &code),
             ("grant_type", "authorization_code"),
             ("redirect_uri", &format!("http://localhost:{}/callback", port)),
@@ -361,10 +367,11 @@ impl GoogleAuth {
         tracing::info!("Access token expirado, renovando con refresh token...");
 
         let client = reqwest::Client::new();
-        // client_secret is required by Google for desktop OAuth apps
+        let client_id = google_client_id();
+        let client_secret = google_client_secret();
         let params = [
-            ("client_id", GOOGLE_CLIENT_ID),
-            ("client_secret", GOOGLE_CLIENT_SECRET),
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
             ("refresh_token", &tokens.refresh_token),
             ("grant_type", "refresh_token"),
         ];

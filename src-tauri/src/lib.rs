@@ -19,6 +19,8 @@ use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_log::log::LevelFilter;
 
 pub fn run() {
+    let _ = dotenv::dotenv();
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
