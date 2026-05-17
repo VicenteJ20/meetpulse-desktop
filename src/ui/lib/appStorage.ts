@@ -6,7 +6,7 @@ export const themeStorageKey = "meetings-assistant-theme";
 
 const audioMetadataStorageKey = "meetings-assistant-audio-metadata";
 const audioCloudJobStorageKey = "meetings-assistant-audio-cloud-jobs";
-const defaultBackendUrl = "http://localhost:8000";
+const defaultBackendUrl = import.meta.env.VITE_MEETPULSE_BACKEND_URL?.trim().replace(/\/+$/, "") || "http://localhost:8000";
 
 export function loadAudioMetadata(): Record<string, AudioMetadata> {
   try {
@@ -60,7 +60,7 @@ export function normalizeBackendUrl(value: string): string {
 
   try {
     const url = new URL(trimmed);
-    if (url.protocol !== "http:") return "";
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
     return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`;
   } catch {
     return "";

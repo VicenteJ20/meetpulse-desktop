@@ -454,7 +454,7 @@ fn create_recording_id() -> String {
 fn save_automatic_draft(source: &Path, created_at: &chrono::DateTime<Utc>) -> anyhow::Result<PathBuf> {
     let user_dirs = UserDirs::new().context("resolving user directories")?;
     let music = user_dirs.home_dir().join("Music");
-    let drafts_dir = music.join("Meetings Assistant").join("drafts");
+    let drafts_dir = music.join("MeetPulse").join("drafts");
     fs::create_dir_all(&drafts_dir).with_context(|| format!("creating {}", drafts_dir.display()))?;
 
     let base_name = created_at

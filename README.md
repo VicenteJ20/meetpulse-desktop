@@ -1,4 +1,4 @@
-# Meetings Assistant Recorder
+# MeetPulse
 
 Aplicacion desktop ligera para Windows orientada a grabar reuniones de forma local, resiliente y con bajo uso de memoria.
 
@@ -33,6 +33,30 @@ El flujo real vive en Rust: `native-audio` captura microfono y audio del escrito
 - Rust estable
 - Microsoft C++ Build Tools
 - WebView2 Runtime
+
+## Configuracion del backend
+
+La app necesita conocer la URL base del backend antes de compilar. Copia el archivo de ejemplo y ajusta ambas variables con el mismo valor:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Para desarrollo local:
+
+```env
+MEETPULSE_BACKEND_URL=http://localhost:8000
+VITE_MEETPULSE_BACKEND_URL=http://localhost:8000
+```
+
+Para generar el bundle final, reemplaza ambas por la URL desplegada del backend antes de ejecutar el build:
+
+```env
+MEETPULSE_BACKEND_URL=https://api.mi-backend.com
+VITE_MEETPULSE_BACKEND_URL=https://api.mi-backend.com
+```
+
+`MEETPULSE_BACKEND_URL` queda embebida en el binario Tauri/Rust y controla las llamadas cloud reales. `VITE_MEETPULSE_BACKEND_URL` queda embebida en el bundle web y se usa como valor inicial del setup en navegador. Si compilas en modo release sin `MEETPULSE_BACKEND_URL`, el build falla para evitar publicar una app apuntando al backend equivocado.
 
 ## Comandos
 
@@ -86,6 +110,14 @@ Mas detalle: [docs/windows-application-control.md](docs/windows-application-cont
 Build:
 
 ```bash
+npm run tauri:build
+```
+
+O definiendo la URL desde PowerShell para ese build:
+
+```powershell
+$env:MEETPULSE_BACKEND_URL="https://api.mi-backend.com"
+$env:VITE_MEETPULSE_BACKEND_URL="https://api.mi-backend.com"
 npm run tauri:build
 ```
 

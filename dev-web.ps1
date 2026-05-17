@@ -18,7 +18,7 @@ function Assert-Command {
 
 Set-Location $PSScriptRoot
 
-Write-Host "Meetings Assistant Recorder - web mock runner" -ForegroundColor Cyan
+Write-Host "MeetPulse - web mock runner" -ForegroundColor Cyan
 Write-Host "This mode does not compile Rust/Tauri and is intended for UI/state development under WDAC." -ForegroundColor DarkGray
 
 Assert-Command "node" "Install Node.js 20+ from https://nodejs.org/"

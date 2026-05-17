@@ -23,7 +23,7 @@ function Assert-Command {
 
 Set-Location $PSScriptRoot
 
-Write-Host "Meetings Assistant Recorder - dev runner" -ForegroundColor Cyan
+Write-Host "MeetPulse - dev runner" -ForegroundColor Cyan
 
 Assert-Command "node" "Install Node.js 20+ from https://nodejs.org/"
 Assert-Command "npm" "Install Node.js 20+ from https://nodejs.org/; npm is bundled with it."

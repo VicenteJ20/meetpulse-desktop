@@ -878,9 +878,14 @@ export function App() {
           updateAudioCloudJob(row.recording.id, accepted.job_id);
         }
       } else {
+        const normalizedBackendUrl = normalizeBackendUrl(backendUrl);
+        if (!normalizedBackendUrl) {
+          throw new Error("Ingresa una URL http o https valida para el backend.");
+        }
+
         const result = await requestBrowserTranscription({
-          endpoint: "",
-          apiKey: "",
+          endpoint: `${normalizedBackendUrl}/transcription/`,
+          apiKey: transcriptionApiKey.trim(),
           audioSrc,
           audioPath,
           displayName: saveFileName || row.displayName,
@@ -919,7 +924,7 @@ export function App() {
   function handleSaveSettings() {
     const normalizedBackendUrl = normalizeBackendUrl(backendUrl);
     if (!normalizedBackendUrl) {
-      setSettingsMessage("Ingresa una URL http valida para el backend.");
+      setSettingsMessage("Ingresa una URL http o https valida para el backend.");
       return;
     }
 

@@ -21,7 +21,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let mut builder = TrayIconBuilder::with_id("meetings-assistant")
         .menu(&menu)
         .show_menu_on_left_click(true)
-        .tooltip("Meetings Assistant")
+        .tooltip("MeetPulse")
         .on_menu_event(|app, event| match event.id().as_ref() {
             SHOW_WIDGET => show_widget_or_dashboard(app),
             SHOW_DASHBOARD => show_window(app, "main"),

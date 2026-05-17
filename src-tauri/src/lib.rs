@@ -70,7 +70,7 @@ pub fn run() {
             commands::logout_auth
         ])
         .build(tauri::generate_context!())
-        .expect("failed to build Meetings Assistant")
+        .expect("failed to build MeetPulse")
         .run(|app, event| {
             if let RunEvent::WindowEvent {
                 label,

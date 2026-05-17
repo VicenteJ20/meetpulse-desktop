@@ -34,7 +34,7 @@ export function statusTitle(status: string): string {
   if (status === "error") return "Error";
   if (status === "recording") return "Grabando";
   if (status === "starting") return "Preparando";
-  return "Meetings Assistant";
+  return "MeetPulse";
 }
 
 export function statusSubtitle(status: string): string {

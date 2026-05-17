@@ -2,6 +2,7 @@ node_modules
 dist
 dist-ssr
 target
+.env
 *.log
 .DS_Store
 .idea

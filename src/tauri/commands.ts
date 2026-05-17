@@ -271,8 +271,8 @@ export function saveRecordingToLibrary({
   if (!isTauriRuntime) {
     const normalizedName = fileName?.trim() || defaultRecordingFileName(new Date());
     const path = draft
-      ? `Music/Meetings Assistant/drafts/${normalizedName}.opus`
-      : `Music/Meetings Assistant/${client || "Cliente"}/${project || "Proyecto"}/${normalizedName}.opus`;
+      ? `Music/MeetPulse/drafts/${normalizedName}.opus`
+      : `Music/MeetPulse/${client || "Cliente"}/${project || "Proyecto"}/${normalizedName}.opus`;
     mockRecordings = mockRecordings.map((recording) =>
       recording.id === recordingId ? { ...recording, final_audio_path: path } : recording,
     );

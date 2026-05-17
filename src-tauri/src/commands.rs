@@ -501,7 +501,7 @@ fn recording_source_path(
 fn music_library_root() -> anyhow::Result<PathBuf> {
     let user_dirs = UserDirs::new().context("resolving user directories")?;
     let music = user_dirs.home_dir().join("Music");
-    Ok(music.join("Meetings Assistant"))
+    Ok(music.join("MeetPulse"))
 }
 
 fn required_folder_name(value: Option<String>, label: &str) -> anyhow::Result<String> {

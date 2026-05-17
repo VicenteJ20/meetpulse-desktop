@@ -36,7 +36,7 @@ export function LibrarySidebar({
           <img src={appIcon} alt="" />
         </span>
         <div>
-          <strong>Meeting Assistant</strong>
+          <strong>MeetPulse</strong>
           <span>{recordingsCount} audios</span>
         </div>
       </div>

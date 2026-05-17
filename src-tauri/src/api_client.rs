@@ -12,11 +12,11 @@ pub struct BackendConfig {
 }
 
 pub fn get_backend_config() -> BackendConfig {
-    #[cfg(debug_assertions)]
-    let base_url = "http://localhost:8000".to_string();
-
-    #[cfg(not(debug_assertions))]
-    let base_url = "https://api.tu-backend-produccion.com".to_string();
+    let base_url = option_env!("MEETPULSE_BACKEND_URL")
+        .unwrap_or("http://localhost:8000")
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
 
     BackendConfig { base_url }
 }
