@@ -1,3 +1,5 @@
+use crate::config::AppConfig;
+
 use std::io::Write;
 use std::net::TcpListener;
 use std::sync::Arc;
@@ -15,13 +17,6 @@ use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 
-fn google_client_id() -> String {
-    std::env::var("GOOGLE_CLIENT_ID").expect("GOOGLE_CLIENT_ID must be set")
-}
-
-fn google_client_secret() -> String {
-    std::env::var("GOOGLE_CLIENT_SECRET").expect("GOOGLE_CLIENT_SECRET must be set")
-}
 const SERVICE_NAME: &str = "meetings-recorder";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,12 +35,14 @@ pub struct AuthState {
 }
 
 pub struct GoogleAuth {
+    config: AppConfig,
     client: Arc<Mutex<Option<BasicClient>>>,
 }
 
 impl GoogleAuth {
-    pub fn new() -> Self {
+    pub fn new(config: AppConfig) -> Self {
         Self {
+            config,
             client: Arc::new(Mutex::new(None)),
         }
     }
@@ -53,8 +50,8 @@ impl GoogleAuth {
     pub async fn init(&self, port: u16) -> anyhow::Result<()> {
         let redirect_url = format!("http://localhost:{}/callback", port);
         let client = BasicClient::new(
-            ClientId::new(google_client_id()),
-            Some(oauth2::ClientSecret::new(google_client_secret())),
+            ClientId::new(self.config.google_client_id.clone()),
+            Some(oauth2::ClientSecret::new(self.config.google_client_secret.clone())),
             AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())?,
             Some(TokenUrl::new(
                 "https://oauth2.googleapis.com/token".to_string(),
@@ -215,8 +212,8 @@ impl GoogleAuth {
         tracing::info!("Intercambiando código por tokens...");
         
         let req_client = reqwest::Client::new();
-        let client_id = google_client_id();
-        let client_secret = google_client_secret();
+        let client_id = &self.config.google_client_id;
+        let client_secret = &self.config.google_client_secret;
         let params = [
             ("client_id", client_id.as_str()),
             ("client_secret", client_secret.as_str()),
@@ -367,8 +364,8 @@ impl GoogleAuth {
         tracing::info!("Access token expirado, renovando con refresh token...");
 
         let client = reqwest::Client::new();
-        let client_id = google_client_id();
-        let client_secret = google_client_secret();
+        let client_id = &self.config.google_client_id;
+        let client_secret = &self.config.google_client_secret;
         let params = [
             ("client_id", client_id.as_str()),
             ("client_secret", client_secret.as_str()),
@@ -438,11 +435,5 @@ impl GoogleAuth {
                 email: None,
             }),
         }
-    }
-}
-
-impl Default for GoogleAuth {
-    fn default() -> Self {
-        Self::new()
     }
 }

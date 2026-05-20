@@ -1,3 +1,5 @@
+use crate::config::AppConfig;
+
 use anyhow::{bail, Context};
 use reqwest::{
     multipart::{Form, Part},
@@ -12,8 +14,9 @@ pub struct BackendConfig {
 }
 
 pub fn get_backend_config() -> BackendConfig {
-    let base_url = option_env!("MEETPULSE_BACKEND_URL")
-        .unwrap_or("http://localhost:8000")
+    let base_url = AppConfig::load()
+        .map(|c| c.backend_url)
+        .unwrap_or_else(|_| "http://localhost:8000".to_string())
         .trim()
         .trim_end_matches('/')
         .to_string();

@@ -18,7 +18,6 @@ anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 cpal = { version = "0.15", optional = true }
 directories = "5"
-dotenv = "0.15"
 keyring = { version = "3", features = ["windows-native"] }
 oauth2 = { version = "4", features = ["reqwest", "rustls-tls"] }
 opus = { version = "0.3", optional = true }
@@ -50,6 +49,5 @@ mock-audio = []
 native-audio = ["dep:cpal", "dep:opus", "dep:wasapi"]
 
 [profile.release]
-subsystem = "windows"
 strip = true
 lto = true

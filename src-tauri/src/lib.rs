@@ -3,6 +3,7 @@ mod app_state;
 mod audio;
 mod auth;
 mod commands;
+mod config;
 mod finalizer;
 mod hotkey;
 mod manifest;
@@ -15,11 +16,12 @@ mod storage;
 mod tray;
 
 use app_state::AppState;
+use config::AppConfig;
 use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_log::log::LevelFilter;
 
 pub fn run() {
-    let _ = dotenv::dotenv();
+    let config = AppConfig::load().expect("failed to load application config");
 
     tauri::Builder::default()
         .plugin(
@@ -33,8 +35,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
-            let state = AppState::initialize(app.handle().clone())?;
+        .setup(move |app| {
+            let state = AppState::initialize(app.handle().clone(), config.clone())?;
             app.manage(state);
             tray::setup(app.handle())?;
             hotkey::setup(app.handle())?;
