@@ -416,7 +416,7 @@ export function App() {
       : findCloudJobForRow(selectedRow, audioRows, cloudJobs, cloudJobByRecordingId[selectedRow.recording.id])
     : undefined;
   const selectedHasCloudArtifacts = Boolean(selectedCloudJob?.has_transcription || selectedCloudJob?.has_analysis);
-  const selectedCanRetryAnalysis = Boolean(selectedCloudJob?.has_transcription);
+  const selectedCanRetryAnalysis = Boolean(selectedCloudJob?.has_transcription || selectedCloudJob?.has_audio);
   const selectedArtifactContent = artifactTab === "analysis" ? selectedArtifacts.analysis : selectedArtifacts.transcription;
   const selectedArtifactBlocks = useMemo(() => parseMarkdownBlocks(selectedArtifactContent), [selectedArtifactContent]);
   const expandedContentOpen = Boolean(selectedRow && expandedRecordingId === selectedRow.recording.id);
@@ -838,7 +838,7 @@ export function App() {
     const audioPath = recordingAudioPath(row.recording);
     const audioSrc = audioPath ? toPlayableAudioSrc(audioPath) : "";
     const cloudJob = selectedCloudJob;
-    const canRetryFromTranscription = Boolean(cloudJob?.has_transcription);
+    const canRetryCloudJob = Boolean(cloudJob?.has_transcription || cloudJob?.has_audio);
 
     setAnalysisError(null);
     setAnalysisMessage(null);
@@ -849,7 +849,7 @@ export function App() {
       return;
     }
 
-    if (!canRetryFromTranscription && !audioSrc) {
+    if (!canRetryCloudJob && !audioSrc) {
       setAnalysisError("Este audio no tiene archivo final disponible.");
       return;
     }
@@ -857,7 +857,7 @@ export function App() {
     setAnalysisSubmitting(true);
     try {
       let acceptedJobId: string | undefined;
-      if (canRetryFromTranscription && cloudJob) {
+      if (canRetryCloudJob && cloudJob) {
         await requestAnalysisRetry({
           jobId: cloudJob.job_id,
         });
@@ -901,12 +901,12 @@ export function App() {
       }
 
       setAnalysisMessage(
-        canRetryFromTranscription
-          ? "Reanalisis solicitado. El servicio volvera a generar el analisis desde la transcripcion guardada."
+        canRetryCloudJob
+          ? "Reprocesamiento solicitado. El servicio volvera a generar la transcripcion y el analisis desde el audio guardado."
           : "Analisis solicitado. El servicio acepto el audio para procesarlo.",
       );
       await refreshCloudDashboard({ showMessage: false });
-      if (acceptedJobId && !canRetryFromTranscription) {
+      if (acceptedJobId && !canRetryCloudJob) {
         if (row.source === "local") {
           await cleanupLocalRecording(row.recording.id);
           await refresh();

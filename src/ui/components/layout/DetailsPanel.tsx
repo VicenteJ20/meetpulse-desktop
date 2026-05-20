@@ -33,7 +33,7 @@ export function DetailsPanel({
   onClose,
 }: {
   selectedRow: AudioRow | undefined;
-  selectedCloudJob: { has_transcription?: boolean; has_analysis?: boolean } | undefined;
+  selectedCloudJob: { has_audio?: boolean; has_transcription?: boolean; has_analysis?: boolean } | undefined;
   saveFileName: string;
   saveClient: string;
   saveProject: string;
@@ -185,7 +185,9 @@ export function DetailsPanel({
           disabled={analysisSubmitting || (!selectedCanRequestAnalysis && !selectedCanRetryAnalysis)}
           title={
             selectedCanRetryAnalysis
-              ? "Volver a generar el analisis desde la transcripcion guardada"
+              ? selectedCloudJob?.has_transcription
+                ? "Volver a generar el analisis desde la transcripcion guardada"
+                : "Volver a procesar desde el audio guardado en cloud"
               : selectedCanRequestAnalysis
                 ? "Solicitar analisis"
                 : "Clasifica el audio o vincula una transcripcion antes de solicitar analisis"
